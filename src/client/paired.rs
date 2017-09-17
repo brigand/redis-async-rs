@@ -113,7 +113,6 @@ impl PairedConnection {
     }
 }
 
-#[cfg(feature="commands")]
 ///
 /// Implementing Redis commands as specific Rust functions, intended to be easier to use that manually constructing
 /// each as appropriate.
