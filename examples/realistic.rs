@@ -9,9 +9,9 @@
  */
 
 extern crate futures;
-extern crate tokio_core;
 #[macro_use]
 extern crate redis_async;
+extern crate tokio_core;
 
 use std::sync::Arc;
 use std::env;
@@ -46,7 +46,7 @@ fn main() {
                 let connection_inner = connection.clone();
                 connection
                     .send(resp_array!["INCR", "realistic_test_ctr"])
-                    .and_then(move |ctr: String| {
+                    .and_then(move |ctr: i64| {
                                   let key = format!("rt_{}", ctr);
                                   let d_val = data.0.to_string();
                                   faf!(connection_inner.send(resp_array!["SET", &key, d_val]));

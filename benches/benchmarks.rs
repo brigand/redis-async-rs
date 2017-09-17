@@ -37,12 +37,12 @@ fn bench_simple_getsetdel(b: &mut Bencher) {
     let connection = core.run(connection).unwrap();
 
     b.iter(|| {
-               faf!(connection.send(resp_array!["SET", "test_key", "42"]));
-               let get = connection.send(resp_array!["GET", "test_key"]);
-               let del = connection.send(resp_array!["DEL", "test_key"]);
-               let get_set = get.join(del);
-               let (_, _): (String, String) = core.run(get_set).unwrap();
-           });
+        faf!(connection.send(resp_array!["SET", "test_key", "42"]));
+        let get = connection.send(resp_array!["GET", "test_key"]);
+        let del = connection.send(resp_array!["DEL", "test_key"]);
+        let get_set = get.join(del);
+        let (_, _): (String, usize) = core.run(get_set).unwrap();
+    });
 }
 
 #[bench]
@@ -85,10 +85,10 @@ fn bench_complex_pipeline(b: &mut Bencher) {
             let connection_inner = connection.clone();
             connection
                 .send(resp_array!["INCR", "id_gen"])
-                .and_then(move |id: String| {
-                              let id = format!("id_{}", id);
-                              connection_inner.send(resp_array!["SET", &id, &x.to_string()])
-                          })
+                .and_then(move |id: i64| {
+                    let id = format!("id_{}", id);
+                    connection_inner.send(resp_array!["SET", id, x.to_string()])
+                })
         });
         let all_sets = futures::future::join_all(sets);
         let _: Vec<String> = core.run(all_sets).unwrap();

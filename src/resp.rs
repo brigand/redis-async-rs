@@ -77,8 +77,10 @@ impl FromResp for RespValue {
 impl FromResp for String {
     fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
-            RespValue::BulkString(ref bytes) => Ok(String::from_utf8_lossy(bytes).into_owned()),
-            RespValue::Integer(i) => Ok(i.to_string()),
+            RespValue::BulkString(bytes) => {
+                String::from_utf8(bytes)
+                    .map_err(|e| Error::RESP(format!("Invalid UTF-8: {:?}", e.into_bytes()), None))
+            }
             RespValue::SimpleString(string) => Ok(string),
             _ => Err(error::resp("Cannot convert into a string", resp)),
         }

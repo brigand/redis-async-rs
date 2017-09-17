@@ -33,7 +33,7 @@ pub use self::pubsub::{pubsub_connect, PubsubConnection};
 mod test {
     use std::io;
 
-    use futures::{Future, Sink, Stream, stream};
+    use futures::{stream, Future, Sink, Stream};
 
     use tokio_core::reactor::Core;
 
@@ -116,8 +116,8 @@ mod test {
         let connect_f = super::paired_connect(&addr, &core.handle()).and_then(|connection| {
             connection
                 .send(resp_array!["INCR", "CTR"])
-                .and_then(move |value: String| {
-                              connection.send(resp_array!["SET", "LASTCTR", value])
+                .and_then(move |value: i64| {
+                              connection.send(resp_array!["SET", "LASTCTR", value.to_string()])
                           })
         });
         let result: String = core.run(connect_f).unwrap();
