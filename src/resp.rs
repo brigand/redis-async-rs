@@ -69,13 +69,13 @@ pub trait FromResp: Sized {
 }
 
 impl FromResp for RespValue {
-    fn from_resp_int(resp: RespValue) -> Result<RespValue, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         Ok(resp)
     }
 }
 
 impl FromResp for String {
-    fn from_resp_int(resp: RespValue) -> Result<String, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
             RespValue::BulkString(ref bytes) => Ok(String::from_utf8_lossy(bytes).into_owned()),
             RespValue::Integer(i) => Ok(i.to_string()),
@@ -86,7 +86,7 @@ impl FromResp for String {
 }
 
 impl FromResp for Vec<u8> {
-    fn from_resp_int(resp: RespValue) -> Result<Vec<u8>, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
             RespValue::BulkString(bytes) => Ok(bytes),
             _ => Err(error::resp("Not a bulk string", resp)),
@@ -95,7 +95,7 @@ impl FromResp for Vec<u8> {
 }
 
 impl FromResp for i64 {
-    fn from_resp_int(resp: RespValue) -> Result<i64, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
             RespValue::Integer(i) => Ok(i),
             _ => Err(error::resp("Cannot be converted into an i64", resp)),
@@ -104,13 +104,13 @@ impl FromResp for i64 {
 }
 
 impl FromResp for usize {
-    fn from_resp_int(resp: RespValue) -> Result<usize, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         i64::from_resp_int(resp).map(|x| x as usize)
     }
 }
 
 impl<T: FromResp> FromResp for Option<T> {
-    fn from_resp_int(resp: RespValue) -> Result<Option<T>, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
             RespValue::Nil => Ok(None),
             x => Ok(Some(T::from_resp_int(x)?)),
@@ -119,7 +119,7 @@ impl<T: FromResp> FromResp for Option<T> {
 }
 
 impl<T: FromResp> FromResp for Vec<T> {
-    fn from_resp_int(resp: RespValue) -> Result<Vec<T>, Error> {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
             RespValue::Array(ary) => {
                 let mut ar = Vec::with_capacity(ary.len());
@@ -129,6 +129,26 @@ impl<T: FromResp> FromResp for Vec<T> {
                 Ok(ar)
             }
             _ => Err(error::resp("Cannot be converted into a vector", resp)),
+        }
+    }
+}
+
+/// Used for situations where Redis returns pairs of values, typically key and value, see BLPOP.
+impl<A: FromResp, B: FromResp> FromResp for (A, B) {
+    fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
+        match resp {
+            RespValue::Array(mut ary) => {
+                if ary.len() == 2 {
+                    let second = ary.remove(1);
+                    let first = ary.remove(0);
+                    Ok((A::from_resp(first)?, B::from_resp(second)?))
+                } else {
+                    Err(error::Error::RESP(format!("Array needs to be 2 elements, is: {}",
+                                                   ary.len()),
+                                           None))
+                }
+            }
+            _ => Err(error::resp("Cannot be converted into a tuple", resp)),
         }
     }
 }

@@ -128,7 +128,7 @@ mod commands {
     use futures::future;
 
     use error;
-    use resp::{ToRespString, RespValue};
+    use resp::{FromResp, ToRespString, RespValue};
 
     use super::SendBox;
 
@@ -451,6 +451,20 @@ mod commands {
             where C: BitposCommand
         {
             self.send(cmd.to_cmd())
+        }
+    }
+
+    impl super::PairedConnection {
+        pub fn blpop<C, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
+            where C: CommandCollection,
+                  K: FromResp + 'static,
+                  V: FromResp + 'static
+        {
+            let mut cmd = Vec::new();
+            cmd.push("BLPOP".into());
+            keys.add_to_cmd(&mut cmd);
+            cmd.push(timeout.to_string().into());
+            self.send(RespValue::Array(cmd))
         }
     }
 
