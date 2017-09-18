@@ -482,6 +482,18 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn brpoplpush<S, V, T>(&self,
+                                   (source, destination, timeout): (S, V, usize))
+                                   -> SendBox<Option<T>>
+            where S: ToRespString + Into<RespValue>,
+                  V: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["BRPOPLPUSH", source, destination, timeout.to_string()])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
