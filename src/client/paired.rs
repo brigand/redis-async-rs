@@ -468,6 +468,20 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn brpop<C, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
+            where C: CommandCollection,
+                  K: FromResp + 'static,
+                  V: FromResp + 'static
+        {
+            let mut cmd = Vec::new();
+            cmd.push("BRPOP".into());
+            keys.add_to_cmd(&mut cmd);
+            cmd.push(timeout.to_string().into());
+            self.send(RespValue::Array(cmd))
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
