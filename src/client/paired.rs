@@ -494,6 +494,10 @@ mod commands {
         }
     }
 
+    // TODO - implement the CLIENT commands
+    // TODO - implement the CLUSTER commands
+    // TODO - implement the COMMAND commands
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
