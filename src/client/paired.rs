@@ -187,7 +187,7 @@ mod commands {
             }
         };
         ($n:ident,$k:expr,($p:ident : $t:ident),$r:ty) => {
-            pub fn $n<$t>(&self, $p: $t) -> SendBox<$r>
+            pub fn $n<$t>(&self, $p: ($t)) -> SendBox<$r>
             where $t: ToRespString + Into<RespValue>
             {
                 self.send(resp_array![$k, $p])
@@ -518,8 +518,6 @@ mod commands {
         }
     }
 
-    // MARKER - all accounted for above this line
-
     impl super::PairedConnection {
         // TODO - there may be a way of generalising this kind of thing
         pub fn del<C>(&self, keys: (C)) -> SendBox<usize>
@@ -536,6 +534,8 @@ mod commands {
             }
         }
     }
+
+    // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
         // TODO: incomplete implementation
