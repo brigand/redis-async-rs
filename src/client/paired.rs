@@ -519,7 +519,6 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        // TODO - there may be a way of generalising this kind of thing
         pub fn del<C>(&self, keys: (C)) -> SendBox<usize>
             where C: CommandCollection
         {
@@ -533,6 +532,10 @@ mod commands {
                 Box::new(future::err(error::internal("DEL command needs at least one key")))
             }
         }
+    }
+
+    impl super::PairedConnection {
+        simple_command!(dump, "DUMP", (key: K), Option<Vec<u8>>);
     }
 
     // MARKER - all accounted for above this line
@@ -749,6 +752,32 @@ mod commands {
             } else {
                 panic!("Should have errored: {:?}", result);
             }
+        }
+
+        #[test]
+        fn dump_test() {
+            let (mut core, connection) = setup_and_delete(vec!["DUMP_TEST"]);
+
+            let connection = connection.and_then(|connection| {
+                connection.set(("DUMP_TEST", "123")).and_then(move |_| {
+                    connection.dump("DUMP_TEST")
+                })
+            });
+
+            let result = core.run(connection).unwrap();
+            assert_eq!(result.unwrap(), vec![0, 192, 123, 7, 0, 183, 208, 134, 18, 8, 176, 178, 163]);
+        }
+
+        #[test]
+        fn dump_nil_test() {
+            let (mut core, connection) = setup_and_delete(vec!["DUMP_NIL_TEST"]);
+
+            let connection = connection.and_then(|connection| {
+                connection.dump("DUMP_NIL_TEST")
+            });
+
+            let result = core.run(connection).unwrap();
+            assert!(result.is_none());
         }
     }
 }
