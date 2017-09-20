@@ -200,6 +200,17 @@ mod commands {
         };
     }
 
+    macro_rules! bulk_str_command {
+        ($n:ident,$k:expr,($p:ident : $t:ident)) => {
+            pub fn $n<T, $t>(&self, $p: ($t)) -> SendBox<T>
+            where $t: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+            {
+                self.send(resp_array![$k, $p])
+            }
+        }
+    }
+
     impl super::PairedConnection {
         simple_command!(append, "APPEND", [(key: K), (value: V)], usize);
         simple_command!(auth, "AUTH", (password: P), ());
@@ -536,6 +547,7 @@ mod commands {
 
     impl super::PairedConnection {
         simple_command!(dump, "DUMP", (key: K), Option<Vec<u8>>);
+        bulk_str_command!(echo, "ECHO", (msg: M));
     }
 
     // MARKER - all accounted for above this line
