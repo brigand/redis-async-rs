@@ -70,9 +70,7 @@ pub type SendBox<T> = Box<Future<Item = T, Error = error::Error>>;
 macro_rules! faf {
     ($e:expr) => (
         {
-            use $crate::client::paired::SendBox;
-            use $crate::resp;
-            let _:SendBox<resp::RespValue> = $e;
+            let _:$crate::client::paired::SendBox<$crate::resp::RespValue> = $e;
         }
     )
 }
