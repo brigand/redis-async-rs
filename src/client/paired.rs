@@ -512,7 +512,7 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn decrby<K>(&self, (key, increment): (K, i64)) -> SendBox<i64>
-        where K: ToRespString + Into<RespValue>
+            where K: ToRespString + Into<RespValue>
         {
             self.send(resp_array!["DECRBY", key, increment.to_string()])
         }
@@ -651,11 +651,12 @@ mod commands {
         fn decr_test() {
             let (mut core, connection) = setup_and_delete(vec!["DECR_KEY"]);
 
-            let connection = connection.and_then(|connection| {
-                connection.set(("DECR_KEY", "123")).and_then(move |_| {
-                    connection.decr("DECR_KEY")
-                })
-            });
+            let connection =
+                connection.and_then(|connection| {
+                                        connection
+                                            .set(("DECR_KEY", "123"))
+                                            .and_then(move |_| connection.decr("DECR_KEY"))
+                                    });
 
             let result = core.run(connection).unwrap();
             assert_eq!(result, 122);
@@ -666,9 +667,9 @@ mod commands {
             let (mut core, connection) = setup_and_delete(vec!["DECRBY_KEY"]);
 
             let connection = connection.and_then(|connection| {
-                connection.set(("DECRBY_KEY", "555")).and_then(move |_| {
-                    connection.decrby(("DECRBY_KEY", 43))
-                })
+                connection
+                    .set(("DECRBY_KEY", "555"))
+                    .and_then(move |_| connection.decrby(("DECRBY_KEY", 43)))
             });
 
             let result = core.run(connection).unwrap();
