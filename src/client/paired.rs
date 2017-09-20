@@ -179,11 +179,18 @@ mod commands {
 
     // TODO - check the expansion regarding trailing commas, etc.
     macro_rules! simple_command {
-        ($n:ident,$k:expr,[ $(($p:ident : $t:ident)),* ],$r:ty) => {
-            pub fn $n< $($t,)* >(&self, ($($p,)*): ($($t,)*)) -> SendBox<$r>
+        ($n:ident,$k:expr,[ $(($p:ident : $t:ident)),+ ],$r:ty) => {
+            pub fn $n< $($t),* >(&self, ($($p,)*): ($($t,)*)) -> SendBox<$r>
             where $($t: ToRespString + Into<RespValue>,)*
             {
                 self.send(resp_array![ $k $(,$p)* ])
+            }
+        };
+        ($n:ident,$k:expr,($p:ident : $t:ident),$r:ty) => {
+            pub fn $n<$t>(&self, $p: $t) -> SendBox<$r>
+            where $t: ToRespString + Into<RespValue>
+            {
+                self.send(resp_array![$k, $p])
             }
         };
         ($n:ident,$k:expr,$r:ty) => {
@@ -195,7 +202,7 @@ mod commands {
 
     impl super::PairedConnection {
         simple_command!(append, "APPEND", [(key: K), (value: V)], usize);
-        simple_command!(auth, "AUTH", [(password: P)], ());
+        simple_command!(auth, "AUTH", (password: P), ());
         simple_command!(bgrewriteaof, "BGREWRITEAOF", ());
         simple_command!(bgsave, "BGSAVE", ());
     }
@@ -498,6 +505,11 @@ mod commands {
     // TODO - implement the CLUSTER commands
     // TODO - implement the COMMAND commands
 
+    impl super::PairedConnection {
+        simple_command!(dbsize, "DBSIZE", usize);
+        simple_command!(decr, "DECR", (key: K), i64);
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
@@ -625,6 +637,20 @@ mod commands {
             let results = core.run(connection).unwrap();
             assert_eq!(results.len(), 1);
             assert_eq!(results[0], None);
+        }
+
+        #[test]
+        fn decr_test() {
+            let (mut core, connection) = setup_and_delete(vec!["DECR_KEY"]);
+
+            let connection = connection.and_then(|connection| {
+                connection.set(("DECR_KEY", "123")).and_then(move |_| {
+                    connection.decr("DECR_KEY")
+                })
+            });
+
+            let result = core.run(connection).unwrap();
+            assert_eq!(result, 122);
         }
 
         #[test]
