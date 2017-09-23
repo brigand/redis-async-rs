@@ -139,17 +139,26 @@ mod commands {
     ///
     pub trait CommandCollection {
         fn add_to_cmd(self, &mut Vec<RespValue>);
+        fn num_cmds(&self) -> usize;
     }
 
     impl<T: ToRespString + Into<RespValue>> CommandCollection for Vec<T> {
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
             cmd.extend(self.into_iter().map(|key| key.into()));
         }
+
+        fn num_cmds(&self) -> usize {
+            self.len()
+        }
     }
 
     impl<'a, T: ToRespString + Into<RespValue> + ToOwned<Owned = T>> CommandCollection for &'a [T] {
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
             cmd.extend(self.into_iter().map(|key| key.to_owned().into()));
+        }
+
+        fn num_cmds(&self) -> usize {
+            self.len()
         }
     }
 
@@ -161,6 +170,10 @@ mod commands {
                         let value = unsafe { mem::replace(&mut self[idx], mem::uninitialized()) };
                         cmd.push(value.into());
                     }
+                }
+
+                fn num_cmds(&self) -> usize {
+                    $c
                 }
             }
         }
@@ -423,16 +436,17 @@ mod commands {
             where K: ToRespString + Into<RespValue>,
                   C: CommandCollection
         {
-            let mut cmd = Vec::new();
+            let key_len = keys.num_cmds();
+            if key_len == 0 {
+                return Box::new(future::err(error::internal("BITOP command needs at least one key")));
+            }
+
+            let mut cmd = Vec::with_capacity(2 + key_len);
             cmd.push(op.into());
             cmd.push(destkey.into());
             keys.add_to_cmd(&mut cmd);
 
-            if cmd.len() > 2 {
-                self.send(RespValue::Array(cmd))
-            } else {
-                Box::new(future::err(error::internal("BITOP command needs at least one key")))
-            }
+            self.send(RespValue::Array(cmd))
         }
     }
 
@@ -476,7 +490,12 @@ mod commands {
                   K: FromResp + 'static,
                   V: FromResp + 'static
         {
-            let mut cmd = Vec::new();
+            let keys_len = keys.num_cmds();
+            if keys_len == 0 {
+                return Box::new(future::err(error::internal("BLPOP requires at least one key")));
+            }
+
+            let mut cmd = Vec::with_capacity(2 + keys_len);
             cmd.push("BLPOP".into());
             keys.add_to_cmd(&mut cmd);
             cmd.push(timeout.to_string().into());
@@ -490,6 +509,11 @@ mod commands {
                   K: FromResp + 'static,
                   V: FromResp + 'static
         {
+            let keys_len = keys.num_cmds();
+            if keys_len == 0 {
+                return Box::new(future::err(error::internal("BRPOP requires at least one key")));
+            }
+
             let mut cmd = Vec::new();
             cmd.push("BRPOP".into());
             keys.add_to_cmd(&mut cmd);
@@ -531,21 +555,48 @@ mod commands {
         pub fn del<C>(&self, keys: (C)) -> SendBox<usize>
             where C: CommandCollection
         {
-            let mut cmd = Vec::new();
+            let keys_len = keys.num_cmds();
+            if keys_len == 0 {
+                return Box::new(future::err(error::internal("DEL command needs at least one key")));
+            }
+
+            let mut cmd = Vec::with_capacity(1 + keys_len);
             cmd.push("DEL".into());
             keys.add_to_cmd(&mut cmd);
 
-            if cmd.len() > 1 {
-                self.send(RespValue::Array(cmd))
-            } else {
-                Box::new(future::err(error::internal("DEL command needs at least one key")))
-            }
+            self.send(RespValue::Array(cmd))
         }
     }
 
     impl super::PairedConnection {
         simple_command!(dump, "DUMP", (key: K), Option<Vec<u8>>);
         bulk_str_command!(echo, "ECHO", (msg: M));
+    }
+
+    impl super::PairedConnection {
+        pub fn eval<S, K, A>(&self, (script, keys, args): (S, Option<K>, Option<A>)) -> SendBox<RespValue>
+        where S: ToRespString + Into<RespValue>,
+              K: CommandCollection,
+              A: CommandCollection
+        {
+            let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
+            let args_len = args.as_ref().map(|a| a.num_cmds()).unwrap_or(0);
+
+            let mut cmd = Vec::with_capacity(3 + keys_len + args_len);
+            cmd.push("EVAL".into());
+            cmd.push(script.into());
+            cmd.push(keys_len.to_string().into());
+            match keys {
+                Some(k) => k.add_to_cmd(&mut cmd),
+                None => ()
+            }
+            match args {
+                Some(a) => a.add_to_cmd(&mut cmd),
+                None => ()
+            }
+
+            self.send(RespValue::Array(cmd))
+        }
     }
 
     // MARKER - all accounted for above this line
