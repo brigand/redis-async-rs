@@ -438,7 +438,7 @@ mod commands {
         {
             let key_len = keys.num_cmds();
             if key_len == 0 {
-                return Box::new(future::err(error::internal("BITOP command needs at least one key")));
+                return Box::new(future::err(error::internal("BITOP command needs at least one key",),),);
             }
 
             let mut cmd = Vec::with_capacity(2 + key_len);
@@ -574,10 +574,13 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn eval<S, K, A>(&self, (script, keys, args): (S, Option<K>, Option<A>)) -> SendBox<RespValue>
-        where S: ToRespString + Into<RespValue>,
-              K: CommandCollection,
-              A: CommandCollection
+        pub fn eval<S, K, A, T>(&self,
+                                (script, keys, args): (S, Option<K>, Option<A>))
+                                -> SendBox<T>
+            where S: ToRespString + Into<RespValue>,
+                  K: CommandCollection,
+                  A: CommandCollection,
+                  T: FromResp + 'static
         {
             let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
             let args_len = args.as_ref().map(|a| a.num_cmds()).unwrap_or(0);
@@ -585,6 +588,32 @@ mod commands {
             let mut cmd = Vec::with_capacity(3 + keys_len + args_len);
             cmd.push("EVAL".into());
             cmd.push(script.into());
+            cmd.push(keys_len.to_string().into());
+
+            if keys.is_some() {
+                keys.unwrap().add_to_cmd(&mut cmd);
+            }
+            if args.is_some() {
+                args.unwrap().add_to_cmd(&mut cmd);
+            }
+
+            self.send(RespValue::Array(cmd))
+        }
+
+        pub fn evalsha<S, K, A, T>(&self,
+                                   (sha, keys, args): (S, Option<K>, Option<A>))
+                                   -> SendBox<T>
+            where S: ToRespString + Into<RespValue>,
+                  K: CommandCollection,
+                  A: CommandCollection,
+                  T: FromResp + 'static
+        {
+            let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
+            let args_len = args.as_ref().map(|a| a.num_cmds()).unwrap_or(0);
+
+            let mut cmd = Vec::with_capacity(3 + keys_len + args_len);
+            cmd.push("EVALSHA".into());
+            cmd.push(sha.into());
             cmd.push(keys_len.to_string().into());
 
             if keys.is_some() {
@@ -818,11 +847,12 @@ mod commands {
         fn dump_test() {
             let (mut core, connection) = setup_and_delete(vec!["DUMP_TEST"]);
 
-            let connection = connection.and_then(|connection| {
-                connection.set(("DUMP_TEST", "123")).and_then(move |_| {
-                    connection.dump("DUMP_TEST")
-                })
-            });
+            let connection =
+                connection.and_then(|connection| {
+                                        connection
+                                            .set(("DUMP_TEST", "123"))
+                                            .and_then(move |_| connection.dump("DUMP_TEST"))
+                                    });
 
             let result = core.run(connection).unwrap();
             assert_eq!(result.unwrap(), vec![0, 192, 123, 7, 0, 183, 208, 134, 18, 8, 176, 178, 163]);
@@ -832,9 +862,7 @@ mod commands {
         fn dump_nil_test() {
             let (mut core, connection) = setup_and_delete(vec!["DUMP_NIL_TEST"]);
 
-            let connection = connection.and_then(|connection| {
-                connection.dump("DUMP_NIL_TEST")
-            });
+            let connection = connection.and_then(|connection| connection.dump("DUMP_NIL_TEST"));
 
             let result = core.run(connection).unwrap();
             assert!(result.is_none());
