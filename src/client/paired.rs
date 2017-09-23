@@ -586,13 +586,12 @@ mod commands {
             cmd.push("EVAL".into());
             cmd.push(script.into());
             cmd.push(keys_len.to_string().into());
-            match keys {
-                Some(k) => k.add_to_cmd(&mut cmd),
-                None => ()
+
+            if keys.is_some() {
+                keys.unwrap().add_to_cmd(&mut cmd);
             }
-            match args {
-                Some(a) => a.add_to_cmd(&mut cmd),
-                None => ()
+            if args.is_some() {
+                args.unwrap().add_to_cmd(&mut cmd);
             }
 
             self.send(RespValue::Array(cmd))
