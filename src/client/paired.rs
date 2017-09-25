@@ -643,6 +643,10 @@ mod commands {
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
+        simple_command!(incr, "INCR", (key: K), i64);
+    }
+
+    impl super::PairedConnection {
         // TODO: incomplete implementation
         pub fn set<K, V>(&self, (key, value): (K, V)) -> SendBox<()>
             where K: ToRespString + Into<RespValue>,
