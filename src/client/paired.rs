@@ -640,6 +640,38 @@ mod commands {
         }
     }
 
+    pub enum ExpireResult {
+        Found,
+        NotFound
+    }
+
+    impl ExpireResult {
+        pub fn found(&self) -> bool {
+            match self {
+                &ExpireResult::Found => true,
+                &ExpireResult::NotFound => false,
+            }
+        }
+    }
+
+    impl FromResp for ExpireResult {
+        fn from_resp_int(resp: RespValue) -> Result<Self, error::Error> {
+            match resp {
+                RespValue::Integer(0) => Ok(ExpireResult::NotFound),
+                RespValue::Integer(1) => Ok(ExpireResult::Found),
+                _ => Err(error::resp("Expecting 0 or 1", resp))
+            }
+        }
+    }
+
+    impl super::PairedConnection {
+        pub fn expire<K>(&self, (key, seconds): (K, usize)) -> SendBox<ExpireResult>
+        where K: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["EXPIRE", key, seconds.to_string()])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
