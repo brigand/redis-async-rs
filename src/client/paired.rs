@@ -671,10 +671,10 @@ mod commands {
             self.send(resp_array!["EXPIRE", key, seconds.to_string()])
         }
 
-        pub fn expireat<K>(&self, (key, seconds): (K, usize)) -> SendBox<ExpireResult>
+        pub fn expireat<K>(&self, (key, timestamp): (K, usize)) -> SendBox<ExpireResult>
             where K: ToRespString + Into<RespValue>
         {
-            self.send(resp_array!["EXPIREAT", key, seconds.to_string()])
+            self.send(resp_array!["EXPIREAT", key, timestamp.to_string()])
         }
     }
 
