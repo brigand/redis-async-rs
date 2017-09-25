@@ -678,6 +678,31 @@ mod commands {
         }
     }
 
+    pub trait FlushdbCommand {
+        fn to_cmd(self) -> RespValue;
+    }
+
+    impl FlushdbCommand for () {
+        fn to_cmd(self) -> RespValue {
+            resp_array!["FLUSHDB"]
+        }
+    }
+
+    pub struct Async;
+
+    impl FlushdbCommand for (Async) {
+        fn to_cmd(self) -> RespValue {
+            resp_array!["FLUSHDB", "ASYNC"]
+        }
+    }
+
+    impl super::PairedConnection {
+        pub fn flushdb<F>(&self, cmd: F) -> SendBox<()>
+        where F: FlushdbCommand {
+            self.send(cmd.to_cmd())
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
