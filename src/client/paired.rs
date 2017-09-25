@@ -629,7 +629,7 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn exists<C>(&self, keys: (C)) -> SendBox<usize>
-        where C: CommandCollection
+            where C: CommandCollection
         {
             let keys_len = keys.num_cmds();
             let mut cmd = Vec::with_capacity(1 + keys_len);
@@ -642,7 +642,7 @@ mod commands {
 
     pub enum ExpireResult {
         Found,
-        NotFound
+        NotFound,
     }
 
     impl ExpireResult {
@@ -659,16 +659,22 @@ mod commands {
             match resp {
                 RespValue::Integer(0) => Ok(ExpireResult::NotFound),
                 RespValue::Integer(1) => Ok(ExpireResult::Found),
-                _ => Err(error::resp("Expecting 0 or 1", resp))
+                _ => Err(error::resp("Expecting 0 or 1", resp)),
             }
         }
     }
 
     impl super::PairedConnection {
         pub fn expire<K>(&self, (key, seconds): (K, usize)) -> SendBox<ExpireResult>
-        where K: ToRespString + Into<RespValue>
+            where K: ToRespString + Into<RespValue>
         {
             self.send(resp_array!["EXPIRE", key, seconds.to_string()])
+        }
+
+        pub fn expireat<K>(&self, (key, seconds): (K, usize)) -> SendBox<ExpireResult>
+            where K: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["EXPIREAT", key, seconds.to_string()])
         }
     }
 
