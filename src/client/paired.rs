@@ -627,6 +627,19 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn exists<C>(&self, keys: (C)) -> SendBox<usize>
+        where C: CommandCollection
+        {
+            let keys_len = keys.num_cmds();
+            let mut cmd = Vec::with_capacity(1 + keys_len);
+            cmd.push("EXISTS".into());
+            keys.add_to_cmd(&mut cmd);
+
+            self.send(RespValue::Array(cmd))
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
