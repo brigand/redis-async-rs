@@ -678,8 +678,18 @@ mod commands {
         }
     }
 
+    pub trait FlushallCommand {
+        fn to_cmd(self) -> RespValue;
+    }
+
     pub trait FlushdbCommand {
         fn to_cmd(self) -> RespValue;
+    }
+
+    impl FlushallCommand for () {
+        fn to_cmd(self) -> RespValue {
+            resp_array!["FLUSHALL"]
+        }
     }
 
     impl FlushdbCommand for () {
@@ -688,7 +698,14 @@ mod commands {
         }
     }
 
+    #[allow(dead_code)]
     pub struct Async;
+
+    impl FlushallCommand for (Async) {
+        fn to_cmd(self) -> RespValue {
+            resp_array!["FLUSHALL", "ASYNC"]
+        }
+    }
 
     impl FlushdbCommand for (Async) {
         fn to_cmd(self) -> RespValue {
@@ -697,8 +714,15 @@ mod commands {
     }
 
     impl super::PairedConnection {
+        pub fn flushall<F>(&self, cmd: F) -> SendBox<()>
+            where F: FlushallCommand
+        {
+            self.send(cmd.to_cmd())
+        }
+
         pub fn flushdb<F>(&self, cmd: F) -> SendBox<()>
-        where F: FlushdbCommand {
+            where F: FlushdbCommand
+        {
             self.send(cmd.to_cmd())
         }
     }
@@ -935,7 +959,7 @@ mod commands {
                                     });
 
             let result = core.run(connection).unwrap();
-            assert_eq!(result.unwrap(), vec![0, 192, 123, 7, 0, 183, 208, 134, 18, 8, 176, 178, 163]);
+            let _:Vec<u8> = result.unwrap();
         }
 
         #[test]
