@@ -130,6 +130,21 @@ mod commands {
 
     use super::SendBox;
 
+    pub trait CommandAddable {
+        fn add_to_cmd(self, &mut Vec<RespValue>);
+        fn num_cmds() -> usize;
+    }
+
+    impl<T: ToRespString + Into<RespValue>> CommandAddable for T {
+        fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
+            cmd.push(self.into());
+        }
+
+        fn num_cmds() -> usize {
+            1
+        }
+    }
+
     /// Several Redis commands take an open-ended collection of keys, or other such structures that are flattened
     /// into the redis command.  For example `MGET key1 key2 key3`.
     ///
@@ -138,42 +153,53 @@ mod commands {
     /// or as a reference to a slice.
     ///
     pub trait CommandCollection {
+        type Command;
         fn add_to_cmd(self, &mut Vec<RespValue>);
         fn num_cmds(&self) -> usize;
     }
 
-    impl<T: ToRespString + Into<RespValue>> CommandCollection for Vec<T> {
+    impl<T: CommandAddable> CommandCollection for Vec<T> {
+        type Command = T;
+
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
-            cmd.extend(self.into_iter().map(|key| key.into()));
+            for item in self {
+                item.add_to_cmd(cmd);
+            }
         }
 
         fn num_cmds(&self) -> usize {
-            self.len()
+            self.len() * T::num_cmds()
         }
     }
 
-    impl<'a, T: ToRespString + Into<RespValue> + ToOwned<Owned = T>> CommandCollection for &'a [T] {
+    impl<'a, T: CommandAddable + ToOwned<Owned = T>> CommandCollection for &'a [T] {
+        type Command = T;
+
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
-            cmd.extend(self.into_iter().map(|key| key.to_owned().into()));
+            for item in self {
+                item.to_owned().add_to_cmd(cmd);
+            }
         }
 
         fn num_cmds(&self) -> usize {
-            self.len()
+            self.len() * T::num_cmds()
         }
     }
 
     macro_rules! command_collection_ary {
         ($c:expr) => {
-            impl<T: ToRespString + Into<RespValue>> CommandCollection for [T; $c] {
+            impl<T: CommandAddable> CommandCollection for [T; $c] {
+                type Command = T;
+
                 fn add_to_cmd(mut self, cmd: &mut Vec<RespValue>) {
                     for idx in 0..$c {
                         let value = unsafe { mem::replace(&mut self[idx], mem::uninitialized()) };
-                        cmd.push(value.into());
+                        value.add_to_cmd(cmd);
                     }
                 }
 
                 fn num_cmds(&self) -> usize {
-                    $c
+                    $c * T::num_cmds()
                 }
             }
         }
@@ -432,9 +458,10 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn bitop<K, C>(&self, (op, destkey, keys): (BitOp, K, C)) -> SendBox<i64>
+        pub fn bitop<K, T, C>(&self, (op, destkey, keys): (BitOp, K, C)) -> SendBox<i64>
             where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection
+                  T: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = T>
         {
             let key_len = keys.num_cmds();
             if key_len == 0 {
@@ -485,8 +512,9 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn blpop<C, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
-            where C: CommandCollection,
+        pub fn blpop<C, T, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
+            where C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>,
                   K: FromResp + 'static,
                   V: FromResp + 'static
         {
@@ -504,8 +532,9 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn brpop<C, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
-            where C: CommandCollection,
+        pub fn brpop<C, T, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
+            where C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>,
                   K: FromResp + 'static,
                   V: FromResp + 'static
         {
@@ -552,8 +581,9 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn del<C>(&self, keys: (C)) -> SendBox<usize>
-            where C: CommandCollection
+        pub fn del<C, T>(&self, keys: (C)) -> SendBox<usize>
+            where C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
@@ -574,12 +604,14 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn eval<S, K, A, T>(&self,
-                                (script, keys, args): (S, Option<K>, Option<A>))
-                                -> SendBox<T>
+        pub fn eval<S, K, KT, A, AT, T>(&self,
+                                        (script, keys, args): (S, Option<K>, Option<A>))
+                                        -> SendBox<T>
             where S: ToRespString + Into<RespValue>,
-                  K: CommandCollection,
-                  A: CommandCollection,
+                  K: CommandCollection<Command = KT>,
+                  KT: ToRespString + Into<RespValue>,
+                  A: CommandCollection<Command = KT>,
+                  AT: ToRespString + Into<RespValue>,
                   T: FromResp + 'static
         {
             let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
@@ -600,12 +632,14 @@ mod commands {
             self.send(RespValue::Array(cmd))
         }
 
-        pub fn evalsha<S, K, A, T>(&self,
-                                   (sha, keys, args): (S, Option<K>, Option<A>))
-                                   -> SendBox<T>
+        pub fn evalsha<S, K, KT, A, AT, T>(&self,
+                                           (sha, keys, args): (S, Option<K>, Option<A>))
+                                           -> SendBox<T>
             where S: ToRespString + Into<RespValue>,
-                  K: CommandCollection,
-                  A: CommandCollection,
+                  K: CommandCollection<Command = KT>,
+                  KT: ToRespString + Into<RespValue>,
+                  A: CommandCollection<Command = AT>,
+                  AT: ToRespString + Into<RespValue>,
                   T: FromResp + 'static
         {
             let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
@@ -628,8 +662,9 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn exists<C>(&self, keys: (C)) -> SendBox<usize>
-            where C: CommandCollection
+        pub fn exists<C, T>(&self, keys: (C)) -> SendBox<usize>
+            where C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>
         {
             let keys_len = keys.num_cmds();
             let mut cmd = Vec::with_capacity(1 + keys_len);
@@ -959,7 +994,7 @@ mod commands {
                                     });
 
             let result = core.run(connection).unwrap();
-            let _:Vec<u8> = result.unwrap();
+            let _: Vec<u8> = result.unwrap();
         }
 
         #[test]
