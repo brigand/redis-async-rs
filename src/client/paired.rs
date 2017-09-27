@@ -793,6 +793,24 @@ mod commands {
 
             self.send(RespValue::Array(cmd))
         }
+
+        pub fn geohash<K, C, T>(&self, (key, members): (K, C)) -> SendBox<Vec<Option<String>>>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>
+        {
+            let keys_len = members.num_cmds();
+            if keys_len == 0 {
+                return Box::new(future::err(error::internal("GEOHASH needs at least one member")));
+            }
+
+            let mut cmd = Vec::with_capacity(2 + keys_len);
+            cmd.push("GEOHASH".into());
+            cmd.push(key.into());
+            members.add_to_cmd(&mut cmd);
+
+            self.send(RespValue::Array(cmd))
+        }
     }
 
     // MARKER - all accounted for above this line
@@ -1051,6 +1069,27 @@ mod commands {
 
             let result = core.run(connection).unwrap();
             assert_eq!(result, 2);
+        }
+
+        #[test]
+        fn geohash_test() {
+            let (mut core, connection) = setup_and_delete(vec!["GEOHASH_TEST"]);
+            let connection = connection.and_then(|connection| {
+                connection
+                    .geoadd(("GEOHASH_TEST",
+                             [(13.361389, 38.115556, "Palermo"),
+                              (15.087269, 37.502669, "Catania")]))
+                    .and_then(move |_| {
+                                  connection.geohash(("GEOHASH_TEST",
+                                                      ["Palermo", "Noway", "Catania"]))
+                              })
+            });
+
+            let result = core.run(connection).unwrap();
+            assert_eq!(result.len(), 3);
+            assert_eq!(result[0], Some(String::from("sqc8b49rny0")));
+            assert_eq!(result[1], None);
+            assert_eq!(result[2], Some(String::from("sqdtr74hyu0")));
         }
     }
 }
