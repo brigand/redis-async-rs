@@ -777,13 +777,13 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn geoadd<K, C, T>(&self, (key, details): (K, C)) -> SendBox<usize>
-        where K: ToRespString + Into<RespValue>,
-              C: CommandCollection<Command = (f64, f64, T)>,
-              T: ToRespString + Into<RespValue>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = (f64, f64, T)>,
+                  T: ToRespString + Into<RespValue>
         {
             let keys_len = details.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("GEOADD command needs at least one key")));
+                return Box::new(future::err(error::internal("GEOADD command needs at least one key",),),);
             }
 
             let mut cmd = Vec::with_capacity(2 + keys_len);
@@ -1044,8 +1044,9 @@ mod commands {
         fn geoadd_test() {
             let (mut core, connection) = setup_and_delete(vec!["GEOADD_TEST"]);
             let connection = connection.and_then(|connection| {
-                connection.geoadd(("GEOADD_TEST", [(13.361389, 38.115556, "Palermo"),
-                                                   (15.087269, 37.502669, "Catania")]))
+                connection.geoadd(("GEOADD_TEST",
+                                   [(13.361389, 38.115556, "Palermo"),
+                                    (15.087269, 37.502669, "Catania")]))
             });
 
             let result = core.run(connection).unwrap();
