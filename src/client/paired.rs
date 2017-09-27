@@ -135,6 +135,19 @@ mod commands {
         fn num_cmds() -> usize;
     }
 
+    impl<T: ToRespString + Into<RespValue>> CommandAddable for (f64, f64, T) {
+        fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
+            let (lng, lat, dst) = self;
+            cmd.push(lng.to_string().into());
+            cmd.push(lat.to_string().into());
+            cmd.push(dst.into());
+        }
+
+        fn num_cmds() -> usize {
+            3
+        }
+    }
+
     impl<T: ToRespString + Into<RespValue>> CommandAddable for T {
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
             cmd.push(self.into());
@@ -762,6 +775,26 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn geoadd<K, C, T>(&self, (key, details): (K, C)) -> SendBox<usize>
+        where K: ToRespString + Into<RespValue>,
+              C: CommandCollection<Command = (f64, f64, T)>,
+              T: ToRespString + Into<RespValue>
+        {
+            let keys_len = details.num_cmds();
+            if keys_len == 0 {
+                return Box::new(future::err(error::internal("GEOADD command needs at least one key")));
+            }
+
+            let mut cmd = Vec::with_capacity(2 + keys_len);
+            cmd.push("GEOADD".into());
+            cmd.push(key.into());
+            details.add_to_cmd(&mut cmd);
+
+            self.send(RespValue::Array(cmd))
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
@@ -1005,6 +1038,18 @@ mod commands {
 
             let result = core.run(connection).unwrap();
             assert!(result.is_none());
+        }
+
+        #[test]
+        fn geoadd_test() {
+            let (mut core, connection) = setup_and_delete(vec!["GEOADD_TEST"]);
+            let connection = connection.and_then(|connection| {
+                connection.geoadd(("GEOADD_TEST", [(13.361389, 38.115556, "Palermo"),
+                                                   (15.087269, 37.502669, "Catania")]))
+            });
+
+            let result = core.run(connection).unwrap();
+            assert_eq!(result, 2);
         }
     }
 }
