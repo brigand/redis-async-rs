@@ -775,6 +775,14 @@ mod commands {
         }
     }
 
+    fn parse_f64(val: String) -> Result<f64, error::Error> {
+        val.parse()
+           .map_err(|_| {
+                        error::Error::RESP(format!("Expected float as String, got: {}", val), None)
+                    })
+    }
+
+
     impl super::PairedConnection {
         pub fn geoadd<K, C, T>(&self, (key, details): (K, C)) -> SendBox<usize>
             where K: ToRespString + Into<RespValue>,
@@ -810,6 +818,45 @@ mod commands {
             members.add_to_cmd(&mut cmd);
 
             self.send(RespValue::Array(cmd))
+        }
+
+        pub fn geopos<K, C, T>(&self, (key, members): (K, C)) -> SendBox<Vec<Option<(f64, f64)>>>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>
+        {
+            let keys_len = members.num_cmds();
+            if keys_len == 0 {
+                return Box::new(future::err(error::internal("GEOPOS needs at least one member")));
+            }
+
+            let mut cmd = Vec::with_capacity(2 + keys_len);
+            cmd.push("GEOPOS".into());
+            cmd.push(key.into());
+            members.add_to_cmd(&mut cmd);
+
+            let parsed = self.send(RespValue::Array(cmd)).and_then(|response:Vec<Option<(String, String)>>| {
+                let mut parsed = Vec::with_capacity(response.len());
+                for r in response {
+                    parsed.push(match r {
+                        Some((lng_s, lat_s)) => {
+                            let lng = parse_f64(lng_s);
+                            if lng.is_err() {
+                                return future::err(lng.unwrap_err());
+                            }
+                            let lat = parse_f64(lat_s);
+                            if lat.is_err() {
+                                return future::err(lat.unwrap_err());
+                            }
+                            Some((lng.unwrap(), lat.unwrap()))
+                        },
+                        None => None
+                    });
+                }
+                future::ok(parsed)
+            });
+
+            Box::new(parsed)
         }
     }
 
@@ -964,13 +1011,6 @@ mod commands {
 
     impl GeoradiusParseOptions {
         fn prepare_result(&self, resp: RespValue) -> Result<GeoradiusResponse, error::Error> {
-            // TODO - move this to a proper function somewhere
-            let parse_f64 = |val: String| {
-                val.parse()
-                    .map_err(|_| {
-                        error::Error::RESP(format!("Expected float as String, got: {}", val), None)
-                    })
-            };
             match resp {
                 RespValue::Array(mut ary) => {
                     let mut idx = ary.len() - 1;
