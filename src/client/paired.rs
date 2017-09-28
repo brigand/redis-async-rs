@@ -123,7 +123,7 @@ impl PairedConnection {
 mod commands {
     use std::mem;
 
-    use futures::future;
+    use futures::{future, Future};
 
     use error;
     use resp::{FromResp, ToRespString, RespValue};
@@ -813,6 +813,256 @@ mod commands {
         }
     }
 
+    #[derive(Clone, Copy)]
+    pub enum GeoradiusUnit {
+        M,
+        Km,
+        Ft,
+        Mi,
+    }
+
+    impl GeoradiusUnit {
+        fn as_str(&self) -> &str {
+            use self::GeoradiusUnit::*;
+            match *self {
+                M => "m",
+                Km => "km",
+                Ft => "ft",
+                Mi => "mi",
+            }
+        }
+    }
+
+    impl Default for GeoradiusUnit {
+        fn default() -> Self {
+            GeoradiusUnit::Km
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    pub enum GeoradiusOrder {
+        Asc,
+        Desc,
+    }
+
+    impl GeoradiusOrder {
+        fn as_str(&self) -> &str {
+            use self::GeoradiusOrder::*;
+            match *self {
+                Asc => "asc",
+                Desc => "desc",
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    pub struct GeoradiusOptions<K>
+        where K: ToRespString + Into<RespValue> + Default
+    {
+        pub key: K,
+        pub lng: f64,
+        pub lat: f64,
+        pub radius: f64,
+        pub units: GeoradiusUnit,
+        pub withcoord: bool,
+        pub withdist: bool,
+        pub withhash: bool,
+        pub count: Option<usize>,
+        pub order: Option<GeoradiusOrder>,
+        pub store: Option<K>,
+        pub storedist: Option<K>,
+    }
+
+    struct GeoradiusParseOptions {
+        withcoord: bool,
+        withdist: bool,
+        withhash: bool,
+    }
+
+    impl<K> GeoradiusOptions<K>
+        where K: ToRespString + Into<RespValue> + Default
+    {
+        fn parse_options(&self) -> GeoradiusParseOptions {
+            GeoradiusParseOptions {
+                withcoord: self.withcoord,
+                withdist: self.withdist,
+                withhash: self.withhash,
+            }
+        }
+
+        pub fn withcoord(&mut self) -> &mut Self {
+            self.withcoord = true;
+            self
+        }
+
+        pub fn withdist(&mut self) -> &mut Self {
+            self.withdist = true;
+            self
+        }
+
+        pub fn withhash(&mut self) -> &mut Self {
+            self.withhash = true;
+            self
+        }
+
+        pub fn count(&mut self, count: usize) -> &mut Self {
+            self.count = Some(count);
+            self
+        }
+
+        pub fn order(&mut self, order: GeoradiusOrder) -> &mut Self {
+            self.order = Some(order);
+            self
+        }
+
+        pub fn store(&mut self, store: K) -> &mut Self {
+            self.store = Some(store);
+            self
+        }
+
+        pub fn storedist(&mut self, storedist: K) -> &mut Self {
+            self.storedist = Some(storedist);
+            self
+        }
+
+        fn to_cmd(self) -> RespValue {
+            let mut cmd = Vec::new();
+            cmd.push("GEORADIUS".into());
+            cmd.push(self.key.into());
+            cmd.push(self.lng.to_string().into());
+            cmd.push(self.lat.to_string().into());
+            cmd.push(self.radius.to_string().into());
+            cmd.push(self.units.as_str().into());
+            if self.withcoord {
+                cmd.push("WITHCOORD".into());
+            }
+            if self.withdist {
+                cmd.push("WITHDIST".into());
+            }
+            if self.withhash {
+                cmd.push("WITHHASH".into());
+            }
+            if let Some(count) = self.count {
+                cmd.push("COUNT".into());
+                cmd.push(count.to_string().into());
+            }
+            if let Some(order) = self.order {
+                cmd.push(order.as_str().into());
+            }
+            if let Some(store) = self.store {
+                cmd.push("STORE".into());
+                cmd.push(store.into());
+            }
+            if let Some(storedist) = self.storedist {
+                cmd.push("STOREDIST".into());
+                cmd.push(storedist.into());
+            }
+
+            RespValue::Array(cmd)
+        }
+    }
+
+    impl GeoradiusParseOptions {
+        fn prepare_result(&self, resp: RespValue) -> Result<GeoradiusResponse, error::Error> {
+            // TODO - move this to a proper function somewhere
+            let parse_f64 = |val: String| {
+                val.parse()
+                    .map_err(|_| {
+                        error::Error::RESP(format!("Expected float as String, got: {}", val), None)
+                    })
+            };
+            match resp {
+                RespValue::Array(mut ary) => {
+                    let mut idx = ary.len() - 1;
+                    let coord = if self.withcoord {
+                        let (lng, lat): (String, String) = FromResp::from_resp(ary.remove(idx))?;
+                        idx -= 1;
+                        Some((parse_f64(lng)?, parse_f64(lat)?))
+                    } else {
+                        None
+                    };
+                    let hash = if self.withhash {
+                        let h = FromResp::from_resp(ary.remove(idx))?;
+                        idx -= 1;
+                        Some(h)
+                    } else {
+                        None
+                    };
+                    let dist = if self.withdist {
+                        let d = FromResp::from_resp(ary.remove(idx))?;
+                        idx -= 1;
+                        Some(parse_f64(d)?)
+                    } else {
+                        None
+                    };
+                    let member = FromResp::from_resp(ary.remove(idx))?;
+                    Ok(GeoradiusResponse {
+                           member: member,
+                           dist: dist,
+                           hash: hash,
+                           coord: coord,
+                       })
+                }
+                _ => {
+                    Err(error::Error::RESP(String::from("Not an array, cannot read an element of a GEORADIUS response",),
+                                           Some(resp)))
+                }
+            }
+        }
+
+        fn prepare_response(&self,
+                            resp: RespValue)
+                            -> Result<Vec<GeoradiusResponse>, error::Error> {
+            if let RespValue::Array(ary) = resp {
+                let mut response = Vec::with_capacity(ary.len());
+                for resp in ary {
+                    response.push(self.prepare_result(resp)?);
+                }
+                Ok(response)
+            } else {
+                Err(error::Error::RESP(String::from("Not an array, cannot read a GEORADIUS response",),
+                                       Some(resp)))
+            }
+        }
+    }
+
+    impl<K> From<(K, f64, f64, f64, GeoradiusUnit)> for GeoradiusOptions<K>
+        where K: ToRespString + Into<RespValue> + Default
+    {
+        fn from((key, lng, lat, radius, units): (K, f64, f64, f64, GeoradiusUnit)) -> Self {
+            GeoradiusOptions {
+                key: key,
+                lng: lng,
+                lat: lat,
+                radius: radius,
+                units: units,
+                ..Default::default()
+            }
+        }
+    }
+
+    pub struct GeoradiusResponse {
+        pub member: String,
+        pub dist: Option<f64>,
+        pub hash: Option<usize>,
+        pub coord: Option<(f64, f64)>,
+    }
+
+    impl super::PairedConnection {
+        pub fn georadius<O, K>(&self, options: O) -> SendBox<Vec<GeoradiusResponse>>
+            where O: Into<GeoradiusOptions<K>>,
+                  K: ToRespString + Into<RespValue> + Default + 'static
+        {
+            let options = options.into();
+            let parse_options = options.parse_options();
+            let parsed_future = self.send(options.to_cmd())
+                .and_then(move |resp: RespValue| {
+                              future::result(parse_options.prepare_response(resp))
+                          });
+            Box::new(parsed_future)
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
@@ -836,7 +1086,8 @@ mod commands {
 
         use tokio_core::reactor::Core;
 
-        use super::{BitfieldCommands, BitfieldTypeAndValue, BitfieldOffset, BitfieldOverflow};
+        use super::{BitfieldCommands, BitfieldTypeAndValue, BitfieldOffset, BitfieldOverflow,
+                    GeoradiusOptions, GeoradiusOrder, GeoradiusUnit};
 
         use super::super::error::Error;
 
@@ -1090,6 +1341,57 @@ mod commands {
             assert_eq!(result[0], Some(String::from("sqc8b49rny0")));
             assert_eq!(result[1], None);
             assert_eq!(result[2], Some(String::from("sqdtr74hyu0")));
+        }
+
+        #[test]
+        fn georadius_test() {
+            let (mut core, connection) = setup_and_delete(vec!["GEORADIUS_TEST"]);
+            let connection = connection.and_then(|connection| {
+                connection
+                    .geoadd(("GEOHASH_TEST",
+                             [(13.361389, 38.115556, "Palermo"),
+                              (15.087269, 37.502669, "Catania")]))
+                    .and_then(move |_| {
+                        let mut options: GeoradiusOptions<&str> =
+                            ("GEOHASH_TEST", 15.0, 37.0, 200.0, GeoradiusUnit::Km).into();
+                        options.order(GeoradiusOrder::Desc);
+
+                        let mut withdist_opts = options.clone();
+                        withdist_opts.withdist();
+                        let withdist = connection.georadius(withdist_opts);
+
+                        let mut withcoord_opts = options.clone();
+                        withcoord_opts.withcoord();
+                        let withcoord = connection.georadius(withcoord_opts);
+
+                        let mut withboth_opts = options.clone();
+                        withboth_opts.withdist();
+                        withboth_opts.withcoord();
+                        let withboth = connection.georadius(withboth_opts);
+
+                        future::join_all(vec![withdist, withcoord, withboth])
+                    })
+            });
+
+            let results = core.run(connection).unwrap();
+            assert_eq!(results.len(), 3);
+
+            assert_eq!(results[0].len(), 2);
+            assert_eq!(results[0][0].member, "Palermo");
+            assert_eq!(results[0][0].dist, Some(190.4424));
+            assert_eq!(results[0][0].coord, None);
+            assert_eq!(results[0][0].hash, None);
+            assert_eq!(results[0][1].member, "Catania");
+
+            assert_eq!(results[1].len(), 2);
+            assert_eq!(results[1][0].member, "Palermo");
+            assert_eq!(results[1][0].dist, None);
+            assert_eq!(results[1][0].coord, Some((13.36138933897018433, 38.11555639549629859)));
+
+            assert_eq!(results[2].len(), 2);
+            assert_eq!(results[2][0].member, "Palermo");
+            assert_eq!(results[2][0].dist, Some(190.4424));
+            assert_eq!(results[2][0].coord, Some((13.36138933897018433, 38.11555639549629859)));
         }
     }
 }
