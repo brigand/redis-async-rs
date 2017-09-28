@@ -777,11 +777,36 @@ mod commands {
 
     fn parse_f64(val: String) -> Result<f64, error::Error> {
         val.parse()
-           .map_err(|_| {
-                        error::Error::RESP(format!("Expected float as String, got: {}", val), None)
-                    })
+            .map_err(|_| {
+                         error::Error::RESP(format!("Expected float as String, got: {}", val), None)
+                     })
     }
 
+    #[derive(Clone, Copy)]
+    pub enum GeoUnit {
+        M,
+        Km,
+        Ft,
+        Mi,
+    }
+
+    impl GeoUnit {
+        fn as_str(&self) -> &str {
+            use self::GeoUnit::*;
+            match *self {
+                M => "m",
+                Km => "km",
+                Ft => "ft",
+                Mi => "mi",
+            }
+        }
+    }
+
+    impl Default for GeoUnit {
+        fn default() -> Self {
+            GeoUnit::Km
+        }
+    }
 
     impl super::PairedConnection {
         pub fn geoadd<K, C, T>(&self, (key, details): (K, C)) -> SendBox<usize>
@@ -835,54 +860,72 @@ mod commands {
             cmd.push(key.into());
             members.add_to_cmd(&mut cmd);
 
-            let parsed = self.send(RespValue::Array(cmd)).and_then(|response:Vec<Option<(String, String)>>| {
-                let mut parsed = Vec::with_capacity(response.len());
-                for r in response {
-                    parsed.push(match r {
-                        Some((lng_s, lat_s)) => {
-                            let lng = parse_f64(lng_s);
-                            if lng.is_err() {
-                                return future::err(lng.unwrap_err());
-                            }
-                            let lat = parse_f64(lat_s);
-                            if lat.is_err() {
-                                return future::err(lat.unwrap_err());
-                            }
-                            Some((lng.unwrap(), lat.unwrap()))
-                        },
-                        None => None
-                    });
-                }
-                future::ok(parsed)
-            });
+            let parsed = self.send(RespValue::Array(cmd))
+                .and_then(|response: Vec<Option<(String, String)>>| {
+                    let mut parsed = Vec::with_capacity(response.len());
+                    for r in response {
+                        parsed.push(match r {
+                                        Some((lng_s, lat_s)) => {
+                                            let lng = parse_f64(lng_s);
+                                            if lng.is_err() {
+                                                return future::err(lng.unwrap_err());
+                                            }
+                                            let lat = parse_f64(lat_s);
+                                            if lat.is_err() {
+                                                return future::err(lat.unwrap_err());
+                                            }
+                                            Some((lng.unwrap(), lat.unwrap()))
+                                        }
+                                        None => None,
+                                    });
+                    }
+                    future::ok(parsed)
+                });
 
             Box::new(parsed)
         }
     }
 
-    #[derive(Clone, Copy)]
-    pub enum GeoradiusUnit {
-        M,
-        Km,
-        Ft,
-        Mi,
+    pub trait GeodistCommand {
+        fn to_cmd(self) -> RespValue;
     }
 
-    impl GeoradiusUnit {
-        fn as_str(&self) -> &str {
-            use self::GeoradiusUnit::*;
-            match *self {
-                M => "m",
-                Km => "km",
-                Ft => "ft",
-                Mi => "mi",
-            }
+    impl<K, M1, M2> GeodistCommand for (K, M1, M2)
+        where K: ToRespString + Into<RespValue>,
+              M1: ToRespString + Into<RespValue>,
+              M2: ToRespString + Into<RespValue>
+    {
+        fn to_cmd(self) -> RespValue {
+            resp_array!["GEODIST", self.0, self.1, self.2]
         }
     }
 
-    impl Default for GeoradiusUnit {
-        fn default() -> Self {
-            GeoradiusUnit::Km
+    impl<K, M1, M2> GeodistCommand for (K, M1, M2, GeoUnit)
+        where K: ToRespString + Into<RespValue>,
+              M1: ToRespString + Into<RespValue>,
+              M2: ToRespString + Into<RespValue>
+    {
+        fn to_cmd(self) -> RespValue {
+            resp_array!["GEODIST", self.0, self.1, self.2, self.3.as_str()]
+        }
+    }
+
+    impl super::PairedConnection {
+        pub fn geodist<C>(&self, cmd: C) -> SendBox<Option<f64>>
+            where C: GeodistCommand
+        {
+            let parsed = self.send(cmd.to_cmd())
+                .and_then(|response: Option<String>| match response {
+                              Some(string) => {
+                                  match parse_f64(string) {
+                                      Ok(dist) => future::ok(Some(dist)),
+                                      Err(e) => future::err(e),
+                                  }
+                              }
+                              None => future::ok(None),
+                          });
+
+            Box::new(parsed)
         }
     }
 
@@ -910,7 +953,7 @@ mod commands {
         pub lng: f64,
         pub lat: f64,
         pub radius: f64,
-        pub units: GeoradiusUnit,
+        pub units: GeoUnit,
         pub withcoord: bool,
         pub withdist: bool,
         pub withhash: bool,
@@ -1066,10 +1109,10 @@ mod commands {
         }
     }
 
-    impl<K> From<(K, f64, f64, f64, GeoradiusUnit)> for GeoradiusOptions<K>
+    impl<K> From<(K, f64, f64, f64, GeoUnit)> for GeoradiusOptions<K>
         where K: ToRespString + Into<RespValue> + Default
     {
-        fn from((key, lng, lat, radius, units): (K, f64, f64, f64, GeoradiusUnit)) -> Self {
+        fn from((key, lng, lat, radius, units): (K, f64, f64, f64, GeoUnit)) -> Self {
             GeoradiusOptions {
                 key: key,
                 lng: lng,
@@ -1127,7 +1170,7 @@ mod commands {
         use tokio_core::reactor::Core;
 
         use super::{BitfieldCommands, BitfieldTypeAndValue, BitfieldOffset, BitfieldOverflow,
-                    GeoradiusOptions, GeoradiusOrder, GeoradiusUnit};
+                    GeoradiusOptions, GeoradiusOrder, GeoUnit};
 
         use super::super::error::Error;
 
@@ -1393,7 +1436,7 @@ mod commands {
                               (15.087269, 37.502669, "Catania")]))
                     .and_then(move |_| {
                         let mut options: GeoradiusOptions<&str> =
-                            ("GEOHASH_TEST", 15.0, 37.0, 200.0, GeoradiusUnit::Km).into();
+                            ("GEOHASH_TEST", 15.0, 37.0, 200.0, GeoUnit::Km).into();
                         options.order(GeoradiusOrder::Desc);
 
                         let mut withdist_opts = options.clone();
