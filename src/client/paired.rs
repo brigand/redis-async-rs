@@ -1194,6 +1194,14 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn getbit<K>(&self, (key, offset): (K, usize)) -> SendBox<usize>
+            where K: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["GETBIT", key, offset.to_string()])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
