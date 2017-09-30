@@ -945,13 +945,24 @@ mod commands {
         }
     }
 
+    #[derive(Clone)]
+    pub enum GeoradiusLocation<T> {
+        LngLat(f64, f64),
+        Member(T),
+    }
+
+    impl<T> Default for GeoradiusLocation<T> {
+        fn default() -> Self {
+            GeoradiusLocation::LngLat(0.0, 0.0)
+        }
+    }
+
     #[derive(Clone, Default)]
     pub struct GeoradiusOptions<K>
         where K: ToRespString + Into<RespValue> + Default
     {
         pub key: K,
-        pub lng: f64,
-        pub lat: f64,
+        pub location: GeoradiusLocation<K>,
         pub radius: f64,
         pub units: GeoUnit,
         pub withcoord: bool,
@@ -1017,10 +1028,18 @@ mod commands {
 
         fn to_cmd(self) -> RespValue {
             let mut cmd = Vec::new();
-            cmd.push("GEORADIUS".into());
+            match self.location {
+                GeoradiusLocation::LngLat(_, _) => cmd.push("GEORADIUS".into()),
+                GeoradiusLocation::Member(_) => cmd.push("GEORADIUSBYMEMBER".into()),
+            }
             cmd.push(self.key.into());
-            cmd.push(self.lng.to_string().into());
-            cmd.push(self.lat.to_string().into());
+            match self.location {
+                GeoradiusLocation::LngLat(lng, lat) => {
+                    cmd.push(lng.to_string().into());
+                    cmd.push(lat.to_string().into());
+                }
+                GeoradiusLocation::Member(string) => cmd.push(string.into()),
+            }
             cmd.push(self.radius.to_string().into());
             cmd.push(self.units.as_str().into());
             if self.withcoord {
@@ -1115,8 +1134,21 @@ mod commands {
         fn from((key, lng, lat, radius, units): (K, f64, f64, f64, GeoUnit)) -> Self {
             GeoradiusOptions {
                 key: key,
-                lng: lng,
-                lat: lat,
+                location: GeoradiusLocation::LngLat(lng, lat),
+                radius: radius,
+                units: units,
+                ..Default::default()
+            }
+        }
+    }
+
+    impl<K> From<(K, K, f64, GeoUnit)> for GeoradiusOptions<K>
+        where K: ToRespString + Into<RespValue> + Default
+    {
+        fn from((key, member, radius, units): (K, K, f64, GeoUnit)) -> Self {
+            GeoradiusOptions {
+                key: key,
+                location: GeoradiusLocation::Member(member),
                 radius: radius,
                 units: units,
                 ..Default::default()
@@ -1143,6 +1175,13 @@ mod commands {
                               future::result(parse_options.prepare_response(resp))
                           });
             Box::new(parsed_future)
+        }
+
+        pub fn georadiusbymember<O, K>(&self, options: O) -> SendBox<Vec<GeoradiusResponse>>
+            where O: Into<GeoradiusOptions<K>>,
+                  K: ToRespString + Into<RespValue> + Default + 'static
+        {
+            self.georadius(options)
         }
     }
 
@@ -1431,12 +1470,12 @@ mod commands {
             let (mut core, connection) = setup_and_delete(vec!["GEORADIUS_TEST"]);
             let connection = connection.and_then(|connection| {
                 connection
-                    .geoadd(("GEOHASH_TEST",
+                    .geoadd(("GEORADIUS_TEST",
                              [(13.361389, 38.115556, "Palermo"),
                               (15.087269, 37.502669, "Catania")]))
                     .and_then(move |_| {
                         let mut options: GeoradiusOptions<&str> =
-                            ("GEOHASH_TEST", 15.0, 37.0, 200.0, GeoUnit::Km).into();
+                            ("GEORADIUS_TEST", 15.0, 37.0, 200.0, GeoUnit::Km).into();
                         options.order(GeoradiusOrder::Desc);
 
                         let mut withdist_opts = options.clone();
