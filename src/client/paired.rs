@@ -1185,6 +1185,15 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn get<K, T>(&self, key: (K)) -> SendBox<Option<T>>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["GET", key])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
