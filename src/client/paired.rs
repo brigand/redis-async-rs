@@ -1211,6 +1211,16 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn getset<K, V, T>(&self, (key, value): (K, V)) -> SendBox<Option<T>>
+            where K: ToRespString + Into<RespValue>,
+                  V: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["GETSET", key, value])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
