@@ -1202,6 +1202,15 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        pub fn getrange<K, T>(&self, (key, start, end): (K, i64, i64)) -> SendBox<T>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["GETRANGE", key, start.to_string(), end.to_string()])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
