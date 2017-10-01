@@ -75,6 +75,11 @@ macro_rules! faf {
     )
 }
 
+/// Convenience function to convert an error into a Future that resolves to an error
+fn fut_err<T: 'static>(msg: &str) -> SendBox<T> {
+    Box::new(future::err(error::internal(msg)))
+}
+
 impl PairedConnection {
     /// Sends a command to Redis.
     ///
@@ -91,9 +96,7 @@ impl PairedConnection {
     pub fn send<T: resp::FromResp + 'static>(&self, msg: resp::RespValue) -> SendBox<T> {
         match &msg {
             &resp::RespValue::Array(_) => (),
-            _ => {
-                return Box::new(future::err(error::internal("Command must be a RespValue::Array")))
-            }
+            _ => return fut_err("Command must be a RespValue::Array"),
         }
 
         let (tx, rx) = oneshot::channel();
@@ -128,7 +131,7 @@ mod commands {
     use error;
     use resp::{FromResp, ToRespString, RespValue};
 
-    use super::SendBox;
+    use super::{fut_err, SendBox};
 
     pub trait CommandAddable {
         fn add_to_cmd(self, &mut Vec<RespValue>);
@@ -478,7 +481,7 @@ mod commands {
         {
             let key_len = keys.num_cmds();
             if key_len == 0 {
-                return Box::new(future::err(error::internal("BITOP command needs at least one key",),),);
+                return fut_err("BITOP command needs at least one key");
             }
 
             let mut cmd = Vec::with_capacity(2 + key_len);
@@ -533,7 +536,7 @@ mod commands {
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("BLPOP requires at least one key")));
+                return fut_err("BLPOP requires at least one key");
             }
 
             let mut cmd = Vec::with_capacity(2 + keys_len);
@@ -553,7 +556,7 @@ mod commands {
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("BRPOP requires at least one key")));
+                return fut_err("BRPOP requires at least one key");
             }
 
             let mut cmd = Vec::new();
@@ -600,7 +603,7 @@ mod commands {
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("DEL command needs at least one key")));
+                return fut_err("DEL command needs at least one key");
             }
 
             let mut cmd = Vec::with_capacity(1 + keys_len);
@@ -816,7 +819,7 @@ mod commands {
         {
             let keys_len = details.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("GEOADD command needs at least one key",),),);
+                return fut_err("GEOADD command needs at least one key");
             }
 
             let mut cmd = Vec::with_capacity(2 + keys_len);
@@ -834,7 +837,7 @@ mod commands {
         {
             let keys_len = members.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("GEOHASH needs at least one member")));
+                return fut_err("GEOHASH needs at least one member");
             }
 
             let mut cmd = Vec::with_capacity(2 + keys_len);
@@ -852,7 +855,7 @@ mod commands {
         {
             let keys_len = members.num_cmds();
             if keys_len == 0 {
-                return Box::new(future::err(error::internal("GEOPOS needs at least one member")));
+                return fut_err("GEOPOS needs at least one member");
             }
 
             let mut cmd = Vec::with_capacity(2 + keys_len);
@@ -1218,6 +1221,26 @@ mod commands {
                   T: FromResp + 'static
         {
             self.send(resp_array!["GETSET", key, value])
+        }
+    }
+
+    impl super::PairedConnection {
+        pub fn hdel<K, C, T>(&self, (key, fields): (K, C)) -> SendBox<usize>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>
+        {
+            let num_fields = fields.num_cmds();
+            if num_fields == 0 {
+                return fut_err("HDEL needs at least one field");
+            }
+
+            let mut cmd = Vec::with_capacity(2 + num_fields);
+            cmd.push("HDEL".into());
+            cmd.push(key.into());
+            fields.add_to_cmd(&mut cmd);
+
+            self.send(RespValue::Array(cmd))
         }
     }
 
