@@ -1244,6 +1244,14 @@ mod commands {
         }
 
         simple_command!(hexists, "HEXISTS", [(key: K), (field: F)], usize);
+
+        pub fn hget<K, F, T>(&self, (key, field): (K, F)) -> SendBox<Option<T>>
+            where K: ToRespString + Into<RespValue>,
+                  F: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["HGET", key, field])
+        }
     }
 
     // MARKER - all accounted for above this line
