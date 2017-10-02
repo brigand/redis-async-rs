@@ -1242,6 +1242,8 @@ mod commands {
 
             self.send(RespValue::Array(cmd))
         }
+
+        simple_command!(hexists, "HEXISTS", [(key: K), (field: F)], usize);
     }
 
     // MARKER - all accounted for above this line
