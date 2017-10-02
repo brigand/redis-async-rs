@@ -124,6 +124,8 @@ impl PairedConnection {
 /// Protected by a feature flag until the above issues are satisfied.
 ///
 mod commands {
+    use std::collections::HashMap;
+    use std::hash::Hash;
     use std::mem;
 
     use futures::{future, Future};
@@ -1252,11 +1254,40 @@ mod commands {
         {
             self.send(resp_array!["HGET", key, field])
         }
+
+        pub fn hgetall<K, F, T>(&self, key: (K)) -> SendBox<HashMap<F, T>>
+            where K: ToRespString + Into<RespValue>,
+                  F: FromResp + Eq + Hash + 'static,
+                  T: FromResp + 'static
+        {
+            let fut = self.send(resp_array!["HGETALL", key]).and_then(|mut resp:Vec<RespValue>| {
+                let resp_len = resp.len();
+                if resp_len % 2 != 0 {
+                    return future::err(error::internal("Not an even number of results, cannot be a hash"));
+                }
+                let mut hash = HashMap::with_capacity(resp_len);
+                let mut resp_iter = resp.drain(..);
+                for _ in 0..(resp_len / 2) {
+                    let key = match F::from_resp(resp_iter.next().expect("Next key")) {
+                        Ok(key) => key,
+                        Err(e) => return future::err(e),
+                    };
+                    let value = match T::from_resp(resp_iter.next().expect("Next value")) {
+                        Ok(value) => value,
+                        Err(e) => return future::err(e),
+                    };
+                    hash.insert(key, value);
+                }
+                future::ok(hash)
+            });
+            Box::new(fut)
+        }
     }
 
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
+        simple_command!(hset, "HSET", [(key: K), (field: F), (value: V)], usize);
         simple_command!(incr, "INCR", (key: K), i64);
     }
 
@@ -1272,6 +1303,8 @@ mod commands {
 
     #[cfg(test)]
     mod test {
+        use std::collections::HashMap;
+
         use futures::future;
         use futures::Future;
 
@@ -1583,6 +1616,23 @@ mod commands {
             assert_eq!(results[2][0].member, "Palermo");
             assert_eq!(results[2][0].dist, Some(190.4424));
             assert_eq!(results[2][0].coord, Some((13.36138933897018433, 38.11555639549629859)));
+        }
+
+        #[test]
+        fn hgetall_test() {
+            let (mut core, connection) = setup_and_delete(vec!["HGETALL_TEST"]);
+            let connection = connection.and_then(|connection| {
+                let first = connection.hset(("HGETALL_TEST", "field1", "Hello"));
+                let second = connection.hset(("HGETALL_TEST", "field2", "World"));
+                first.join(second).and_then(move |_| {
+                    connection.hgetall("HGETALL_TEST")
+                })
+            });
+
+            let result:HashMap<String, String> = core.run(connection).unwrap();
+            assert_eq!(result.len(), 2);
+            assert_eq!(result["field1"], "Hello");
+            assert_eq!(result["field2"], "World");
         }
     }
 }
