@@ -1282,6 +1282,13 @@ mod commands {
             });
             Box::new(fut)
         }
+
+        pub fn hincrby<K, F>(&self, (key, field, inc): (K, F, i64)) -> SendBox<usize>
+            where K: ToRespString + Into<RespValue>,
+                  F: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["HINCRBY", key, field, inc.to_string()])
+        }
     }
 
     // MARKER - all accounted for above this line
@@ -1624,12 +1631,12 @@ mod commands {
             let connection = connection.and_then(|connection| {
                 let first = connection.hset(("HGETALL_TEST", "field1", "Hello"));
                 let second = connection.hset(("HGETALL_TEST", "field2", "World"));
-                first.join(second).and_then(move |_| {
-                    connection.hgetall("HGETALL_TEST")
-                })
+                first
+                    .join(second)
+                    .and_then(move |_| connection.hgetall("HGETALL_TEST"))
             });
 
-            let result:HashMap<String, String> = core.run(connection).unwrap();
+            let result: HashMap<String, String> = core.run(connection).unwrap();
             assert_eq!(result.len(), 2);
             assert_eq!(result["field1"], "Hello");
             assert_eq!(result["field2"], "World");
