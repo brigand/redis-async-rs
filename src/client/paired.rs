@@ -1310,6 +1310,8 @@ mod commands {
         {
             self.send(resp_array!["HKEYS", key])
         }
+
+        simple_command!(hlen, "HLEN", (key: K), usize);
     }
 
     // MARKER - all accounted for above this line
