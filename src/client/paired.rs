@@ -1283,11 +1283,25 @@ mod commands {
             Box::new(fut)
         }
 
-        pub fn hincrby<K, F>(&self, (key, field, inc): (K, F, i64)) -> SendBox<usize>
+        pub fn hincrby<K, F>(&self, (key, field, inc): (K, F, i64)) -> SendBox<i64>
             where K: ToRespString + Into<RespValue>,
                   F: ToRespString + Into<RespValue>
         {
             self.send(resp_array!["HINCRBY", key, field, inc.to_string()])
+        }
+
+        pub fn hincrbyfloat<K, F>(&self, (key, field, inc): (K, F, f64)) -> SendBox<f64>
+            where K: ToRespString + Into<RespValue>,
+                  F: ToRespString + Into<RespValue>
+        {
+            let fut = self.send(resp_array!["HINCRBYFLOAT", key, field, inc.to_string()])
+                .and_then(|val: String| match val.parse() {
+                              Ok(val_f) => future::ok(val_f),
+                              Err(_) => {
+                                  future::err(error::internal(format!("Cannot parse: {}", val)))
+                              }
+                          });
+            Box::new(fut)
         }
     }
 
