@@ -1312,6 +1312,25 @@ mod commands {
         }
 
         simple_command!(hlen, "HLEN", (key: K), usize);
+
+        pub fn hmget<K, C, T, V>(&self, (key, fields): (K, C)) -> SendBox<Vec<Option<V>>>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = T>,
+                  T: ToRespString + Into<RespValue>,
+                  V: FromResp + 'static
+        {
+            let num_fields = fields.num_cmds();
+            if num_fields == 0 {
+                return fut_err("HMGET needs at least one field");
+            }
+
+            let mut cmds = Vec::with_capacity(2 + num_fields);
+            cmds.push("HMGET".into());
+            cmds.push(key.into());
+            fields.add_to_cmd(&mut cmds);
+
+            self.send(RespValue::Array(cmds))
+        }
     }
 
     // MARKER - all accounted for above this line
@@ -1663,6 +1682,29 @@ mod commands {
             assert_eq!(result.len(), 2);
             assert_eq!(result["field1"], "Hello");
             assert_eq!(result["field2"], "World");
+        }
+
+        #[test]
+        fn hmget_test() {
+            let (mut core, connection) = setup_and_delete(vec!["HMGET_TEST"]);
+            let connection = connection.and_then(|connection| {
+                let first = connection.hset(("HMGET_TEST", "field1", "Hello"));
+                let second = connection.hset(("HMGET_TEST", "field2", "World"));
+                first
+                    .join(second)
+                    .and_then(move |_| {
+                                  let len = connection.hlen("HMGET_TEST");
+                                  let gets = connection.hmget(("HMGET_TEST", ["field1", "field2"]));
+                                  len.join(gets)
+                              })
+            });
+
+            let (len, gets): (_, Vec<Option<String>>) = core.run(connection).unwrap();
+            assert_eq!(len, 2);
+            assert_eq!(gets.len(), 2);
+
+            assert_eq!(gets[0], Some(String::from("Hello")));
+            assert_eq!(gets[1], Some(String::from("World")));
         }
     }
 }
