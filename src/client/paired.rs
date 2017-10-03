@@ -1303,6 +1303,13 @@ mod commands {
                           });
             Box::new(fut)
         }
+
+        pub fn hkeys<K, T>(&self, key: (K)) -> SendBox<Vec<T>>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["HKEYS", key])
+        }
     }
 
     // MARKER - all accounted for above this line
