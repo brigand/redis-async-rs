@@ -1368,6 +1368,7 @@ mod commands {
 
         simple_command!(hset, "HSET", [(key: K), (field: F), (value: V)], usize);
         simple_command!(hsetnx, "HSETNX", [(key: K), (field: F), (value: V)], usize);
+        simple_command!(hstrlen, "HSTRLEN", [(key: K), (field: F)], usize);
     }
 
     // MARKER - all accounted for above this line
