@@ -270,6 +270,7 @@ mod commands {
         };
     }
 
+    // TODO - this macro might be used so infrequently we'd be better off without it
     macro_rules! bulk_str_command {
         ($n:ident,$k:expr,($p:ident : $t:ident)) => {
             pub fn $n<T, $t>(&self, $p: ($t)) -> SendBox<T>
@@ -279,6 +280,17 @@ mod commands {
                 self.send(resp_array![$k, $p])
             }
         }
+    }
+
+    fn parse_f64(val: String) -> Result<f64, error::Error> {
+        val.parse()
+            .map_err(|_| {
+                         error::Error::RESP(format!("Expected float as String, got: {}", val), None)
+                     })
+    }
+
+    fn string_to_f64(fut: SendBox<String>) -> SendBox<f64> {
+        Box::new(fut.and_then(|val| future::result(parse_f64(val))))
     }
 
     impl super::PairedConnection {
@@ -795,13 +807,6 @@ mod commands {
         }
     }
 
-    fn parse_f64(val: String) -> Result<f64, error::Error> {
-        val.parse()
-            .map_err(|_| {
-                         error::Error::RESP(format!("Expected float as String, got: {}", val), None)
-                     })
-    }
-
     #[derive(Clone, Copy)]
     pub enum GeoUnit {
         M,
@@ -937,10 +942,7 @@ mod commands {
             let parsed = self.send(cmd.to_cmd())
                 .and_then(|response: Option<String>| match response {
                               Some(string) => {
-                                  match parse_f64(string) {
-                                      Ok(dist) => future::ok(Some(dist)),
-                                      Err(e) => future::err(e),
-                                  }
+                                  future::result(parse_f64(string).map(|dist| Some(dist)))
                               }
                               None => future::ok(None),
                           });
@@ -1309,14 +1311,7 @@ mod commands {
             where K: ToRespString + Into<RespValue>,
                   F: ToRespString + Into<RespValue>
         {
-            let fut = self.send(resp_array!["HINCRBYFLOAT", key, field, inc.to_string()])
-                .and_then(|val: String| match val.parse() {
-                              Ok(val_f) => future::ok(val_f),
-                              Err(_) => {
-                                  future::err(error::internal(format!("Cannot parse: {}", val)))
-                              }
-                          });
-            Box::new(fut)
+            string_to_f64(self.send(resp_array!["HINCRBYFLOAT", key, field, inc.to_string()]))
         }
 
         pub fn hkeys<K, T>(&self, key: (K)) -> SendBox<Vec<T>>
@@ -1378,11 +1373,23 @@ mod commands {
         }
     }
 
-    // MARKER - all accounted for above this line
-
     impl super::PairedConnection {
         simple_command!(incr, "INCR", (key: K), i64);
+
+        pub fn incrby<K>(&self, (key, increment): (K, i64)) -> SendBox<i64>
+            where K: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["INCRBY", key, increment.to_string()])
+        }
+
+        pub fn incrbyfloat<K>(&self, (key, increment): (K, f64)) -> SendBox<f64>
+            where K: ToRespString + Into<RespValue>
+        {
+            string_to_f64(self.send(resp_array!["INCRBYFLOAT", key, increment.to_string()]))
+        }
     }
+
+    // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
         // TODO: incomplete implementation
@@ -1748,6 +1755,16 @@ mod commands {
 
             assert_eq!(gets[0], Some(String::from("Hello")));
             assert_eq!(gets[1], Some(String::from("World")));
+        }
+
+        #[test]
+        fn incrbyfloat_test() {
+            let (mut core, connection) = setup_and_delete(vec!["INCRBYFLOAT_TEST"]);
+            let connection =
+                connection.and_then(|connection| connection.incrbyfloat(("INCRBYFLOAT_TEST", 0.5)));
+
+            let val = core.run(connection).unwrap();
+            assert_eq!(val, 0.5);
         }
     }
 }
