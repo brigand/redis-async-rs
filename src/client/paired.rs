@@ -1400,6 +1400,10 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        simple_command!(lastsave, "LASTSAVE", usize);
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
