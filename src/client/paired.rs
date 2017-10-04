@@ -1365,12 +1365,14 @@ mod commands {
 
             self.send(RespValue::Array(cmds))
         }
+
+        simple_command!(hset, "HSET", [(key: K), (field: F), (value: V)], usize);
+        simple_command!(hsetnx, "HSETNX", [(key: K), (field: F), (value: V)], usize);
     }
 
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
-        simple_command!(hset, "HSET", [(key: K), (field: F), (value: V)], usize);
         simple_command!(incr, "INCR", (key: K), i64);
     }
 
