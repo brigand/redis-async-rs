@@ -1389,6 +1389,17 @@ mod commands {
         }
     }
 
+    // TODO - INFO command
+
+    impl super::PairedConnection {
+        pub fn keys<P, T>(&self, pattern: (P)) -> SendBox<Vec<T>>
+            where P: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["KEYS", pattern])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
