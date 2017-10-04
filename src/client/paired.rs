@@ -1369,6 +1369,13 @@ mod commands {
         simple_command!(hset, "HSET", [(key: K), (field: F), (value: V)], usize);
         simple_command!(hsetnx, "HSETNX", [(key: K), (field: F), (value: V)], usize);
         simple_command!(hstrlen, "HSTRLEN", [(key: K), (field: F)], usize);
+
+        pub fn hvals<K, T>(&self, key: (K)) -> SendBox<Vec<T>>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["HVALS", key.into()])
+        }
     }
 
     // MARKER - all accounted for above this line
