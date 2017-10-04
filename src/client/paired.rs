@@ -153,6 +153,21 @@ mod commands {
         }
     }
 
+    impl<K, F> CommandAddable for (K, F)
+        where K: ToRespString + Into<RespValue>,
+              F: ToRespString + Into<RespValue>
+    {
+        fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
+            let (key, field) = self;
+            cmd.push(key.into());
+            cmd.push(field.into());
+        }
+
+        fn num_cmds() -> usize {
+            2
+        }
+    }
+
     impl<T: ToRespString + Into<RespValue>> CommandAddable for T {
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
             cmd.push(self.into());
@@ -1331,6 +1346,25 @@ mod commands {
 
             self.send(RespValue::Array(cmds))
         }
+
+        pub fn hmset<K, C, F, V>(&self, (key, field_values): (K, C)) -> SendBox<()>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = (F, V)>,
+                  F: ToRespString + Into<RespValue>,
+                  V: ToRespString + Into<RespValue>
+        {
+            let num_cmds = field_values.num_cmds();
+            if num_cmds == 0 {
+                return fut_err("HMSET needs at least one pairs of field and values");
+            }
+
+            let mut cmds = Vec::with_capacity(2 + num_cmds);
+            cmds.push("HMSET".into());
+            cmds.push(key.into());
+            field_values.add_to_cmd(&mut cmds);
+
+            self.send(RespValue::Array(cmds))
+        }
     }
 
     // MARKER - all accounted for above this line
@@ -1688,15 +1722,14 @@ mod commands {
         fn hmget_test() {
             let (mut core, connection) = setup_and_delete(vec!["HMGET_TEST"]);
             let connection = connection.and_then(|connection| {
-                let first = connection.hset(("HMGET_TEST", "field1", "Hello"));
-                let second = connection.hset(("HMGET_TEST", "field2", "World"));
-                first
-                    .join(second)
-                    .and_then(move |_| {
-                                  let len = connection.hlen("HMGET_TEST");
-                                  let gets = connection.hmget(("HMGET_TEST", ["field1", "field2"]));
-                                  len.join(gets)
-                              })
+                let setter = connection
+                    .hmset(("HMGET_TEST", [("field1", "Hello"), ("field2", "World")]));
+                setter.and_then(move |_| {
+                                    let len = connection.hlen("HMGET_TEST");
+                                    let gets = connection.hmget(("HMGET_TEST",
+                                                                 ["field1", "field2"]));
+                                    len.join(gets)
+                                })
             });
 
             let (len, gets): (_, Vec<Option<String>>) = core.run(connection).unwrap();
