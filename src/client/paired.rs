@@ -1404,6 +1404,52 @@ mod commands {
         simple_command!(lastsave, "LASTSAVE", usize);
     }
 
+    impl super::PairedConnection {
+        pub fn lindex<K, T>(&self, (key, index): (K, usize)) -> SendBox<Option<T>>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["LINDEX", key, index.to_string()])
+        }
+    }
+
+    pub enum BeforeAfter {
+        Before,
+        After
+    }
+
+    impl From<BeforeAfter> for RespValue {
+        fn from(from: BeforeAfter) -> Self {
+            use self::BeforeAfter::*;
+            match from {
+                Before => "BEFORE",
+                After => "AFTER"
+            }.into()
+        }
+    }
+
+    impl From<bool> for BeforeAfter {
+        fn from(from: bool) -> Self {
+            use self::BeforeAfter::*;
+            if from {
+                Before
+            } else {
+                After
+            }
+        }
+    }
+
+    impl super::PairedConnection {
+        pub fn linsert<K, B, P, V>(&self, (key, before_aft, pivot, value): (K, B, P, V)) -> SendBox<i64>
+            where K: ToRespString + Into<RespValue>,
+                  P: ToRespString + Into<RespValue>,
+                  V: ToRespString + Into<RespValue>,
+                  B: Into<BeforeAfter>
+        {
+            self.send(resp_array!["LINSERT", key, before_aft.into(), pivot, value])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
