@@ -1450,6 +1450,19 @@ mod commands {
         }
     }
 
+    impl super::PairedConnection {
+        simple_command!(llen, "LLEN", (key: K), usize);
+    }
+
+    impl super::PairedConnection {
+        pub fn lpop<K, T>(&self, key: (K)) -> SendBox<Option<T>>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["LPOP", key])
+        }
+    }
+
     // MARKER - all accounted for above this line
 
     impl super::PairedConnection {
