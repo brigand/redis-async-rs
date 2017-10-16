@@ -1415,32 +1415,31 @@ mod commands {
 
     pub enum BeforeAfter {
         Before,
-        After
+        After,
     }
 
     impl From<BeforeAfter> for RespValue {
         fn from(from: BeforeAfter) -> Self {
             use self::BeforeAfter::*;
             match from {
-                Before => "BEFORE",
-                After => "AFTER"
-            }.into()
+                    Before => "BEFORE",
+                    After => "AFTER",
+                }
+                .into()
         }
     }
 
     impl From<bool> for BeforeAfter {
         fn from(from: bool) -> Self {
             use self::BeforeAfter::*;
-            if from {
-                Before
-            } else {
-                After
-            }
+            if from { Before } else { After }
         }
     }
 
     impl super::PairedConnection {
-        pub fn linsert<K, B, P, V>(&self, (key, before_aft, pivot, value): (K, B, P, V)) -> SendBox<i64>
+        pub fn linsert<K, B, P, V>(&self,
+                                   (key, before_aft, pivot, value): (K, B, P, V))
+                                   -> SendBox<i64>
             where K: ToRespString + Into<RespValue>,
                   P: ToRespString + Into<RespValue>,
                   V: ToRespString + Into<RespValue>,
@@ -1460,6 +1459,24 @@ mod commands {
                   T: FromResp + 'static
         {
             self.send(resp_array!["LPOP", key])
+        }
+
+        pub fn lpush<K, C, V>(&self, (key, values): (K, C)) -> SendBox<usize>
+            where K: ToRespString + Into<RespValue>,
+                  C: CommandCollection<Command = V>,
+                  V: ToRespString + Into<RespValue>
+        {
+            let num_cmds = values.num_cmds();
+            if num_cmds == 0 {
+                return fut_err("LPUSH needs at least one pairs of field and values");
+            }
+
+            let mut cmds = Vec::with_capacity(2 + num_cmds);
+            cmds.push("LPUSH".into());
+            cmds.push(key.into());
+            values.add_to_cmd(&mut cmds);
+
+            self.send(RespValue::Array(cmds))
         }
     }
 
@@ -1839,6 +1856,22 @@ mod commands {
 
             let val = core.run(connection).unwrap();
             assert_eq!(val, 0.5);
+        }
+
+        #[test]
+        fn lpush_lpop_test() {
+            let (mut core, connection) = setup_and_delete(vec!["LPUSH_LPOP_TEST"]);
+            let connection = connection.and_then(|connection| {
+                connection.lpush(("LPUSH_LPOP_TEST", ["V1", "V2", "V3"])).and_then(move |_| {
+                    let first = connection.lpop("LPUSH_LPOP_TEST");
+                    let second = connection.lpop("LPUSH_LPOP_TEST");
+                    first.join(second)
+                })
+            });
+
+            let (first, second) = core.run(connection).unwrap();
+            assert_eq!(first, Some(String::from("V3")));
+            assert_eq!(second, Some(String::from("V2")));
         }
     }
 }
