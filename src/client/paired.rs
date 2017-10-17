@@ -1478,6 +1478,8 @@ mod commands {
 
             self.send(RespValue::Array(cmds))
         }
+
+        simple_command!(lpushx, "LPUSHX", [(key: K), (value: V)], usize);
     }
 
     // MARKER - all accounted for above this line
