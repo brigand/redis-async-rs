@@ -1487,6 +1487,13 @@ mod commands {
         {
             self.send(resp_array!["LRANGE", key, start.to_string(), end.to_string()])
         }
+
+        pub fn lrem<K, V>(&self, (key, count, value): (K, i64, V)) -> SendBox<usize>
+            where K: ToRespString + Into<RespValue>,
+                  V: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["LREM", key, count.to_string(), value])
+        }
     }
 
     // MARKER - all accounted for above this line
