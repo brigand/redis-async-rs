@@ -1480,6 +1480,13 @@ mod commands {
         }
 
         simple_command!(lpushx, "LPUSHX", [(key: K), (value: V)], usize);
+
+        pub fn lrange<K, T>(&self, (key, start, end): (K, i64, i64)) -> SendBox<Vec<T>>
+            where K: ToRespString + Into<RespValue>,
+                  T: FromResp + 'static
+        {
+            self.send(resp_array!["LRANGE", key, start.to_string(), end.to_string()])
+        }
     }
 
     // MARKER - all accounted for above this line
@@ -1874,6 +1881,22 @@ mod commands {
             let (first, second) = core.run(connection).unwrap();
             assert_eq!(first, Some(String::from("V3")));
             assert_eq!(second, Some(String::from("V2")));
+        }
+
+        #[test]
+        fn lrange_test() {
+            let (mut core, connection) = setup_and_delete(vec!["LRANGE_TEST"]);
+            let connection = connection.and_then(|connection| {
+                connection.lpush(("LRANGE_TEST", ["V1", "V2", "V3"])).and_then(move |_| {
+                    connection.lrange(("LRANGE_TEST", 0, 3))
+                })
+            });
+
+            let data:Vec<String> = core.run(connection).unwrap();
+            assert_eq!(data.len(), 3);
+            assert_eq!(data[0], "V3");
+            assert_eq!(data[1], "V2");
+            assert_eq!(data[2], "V1");
         }
     }
 }
