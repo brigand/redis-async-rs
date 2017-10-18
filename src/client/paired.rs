@@ -1494,6 +1494,13 @@ mod commands {
         {
             self.send(resp_array!["LREM", key, count.to_string(), value])
         }
+
+        pub fn lset<K, V>(&self, (key, index, value): (K, i64, V)) -> SendBox<()>
+            where K: ToRespString + Into<RespValue>,
+                  V: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["LSET", key, index.to_string(), value])
+        }
     }
 
     // MARKER - all accounted for above this line
