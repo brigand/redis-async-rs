@@ -1501,6 +1501,12 @@ mod commands {
         {
             self.send(resp_array!["LSET", key, index.to_string(), value])
         }
+
+        pub fn ltrim<K>(&self, (key, start, stop): (K, i64, i64)) -> SendBox<()>
+            where K: ToRespString + Into<RespValue>
+        {
+            self.send(resp_array!["LTRIM", key, start.to_string(), stop.to_string()])
+        }
     }
 
     // MARKER - all accounted for above this line
