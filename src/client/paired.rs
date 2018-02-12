@@ -42,7 +42,7 @@ pub fn paired_connect(addr: &SocketAddr, handle: &Handle) -> PairedConnectionBox
                 match dest.send(msg) {
                     Ok(()) => Ok(()),
                     // Ignore error as the channel may have been legitimately closed in the meantime
-                    Err(_) => Ok(())
+                    Err(_) => Ok(()),
                 }
             });
             handle.spawn(sender.map(|_| ()));
@@ -107,9 +107,9 @@ impl PairedConnection {
         self.out_tx.unbounded_send(msg).expect("Failed to send");
 
         let future = rx.then(|v| match v {
-                                 Ok(v) => future::result(T::from_resp(v)),
-                                 Err(e) => future::err(e.into()),
-                             });
+            Ok(v) => future::result(T::from_resp(v)),
+            Err(e) => future::err(e.into()),
+        });
         Box::new(future)
     }
 }
@@ -131,7 +131,7 @@ mod commands {
     use futures::{future, Future};
 
     use error;
-    use resp::{FromResp, ToRespString, RespValue};
+    use resp::{FromResp, RespValue, ToRespString};
 
     use super::{fut_err, SendBox};
 
@@ -154,8 +154,9 @@ mod commands {
     }
 
     impl<K, F> CommandAddable for (K, F)
-        where K: ToRespString + Into<RespValue>,
-              F: ToRespString + Into<RespValue>
+    where
+        K: ToRespString + Into<RespValue>,
+        F: ToRespString + Into<RespValue>,
     {
         fn add_to_cmd(self, cmd: &mut Vec<RespValue>) {
             let (key, field) = self;
@@ -283,10 +284,9 @@ mod commands {
     }
 
     fn parse_f64(val: String) -> Result<f64, error::Error> {
-        val.parse()
-            .map_err(|_| {
-                         error::Error::RESP(format!("Expected float as String, got: {}", val), None)
-                     })
+        val.parse().map_err(|_| {
+            error::Error::RESP(format!("Expected float as String, got: {}", val), None)
+        })
     }
 
     fn string_to_f64(fut: SendBox<String>) -> SendBox<f64> {
@@ -318,7 +318,8 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn bitcount<C>(&self, cmd: C) -> SendBox<usize>
-            where C: BitcountCommand
+        where
+            C: BitcountCommand,
         {
             self.send(cmd.to_cmd())
         }
@@ -373,10 +374,9 @@ mod commands {
     impl BitfieldType {
         fn to_cmd(&self) -> RespValue {
             match self {
-                    &BitfieldType::Signed(size) => format!("i{}", size),
-                    &BitfieldType::Unsigned(size) => format!("u{}", size),
-                }
-                .into()
+                &BitfieldType::Signed(size) => format!("i{}", size),
+                &BitfieldType::Unsigned(size) => format!("u{}", size),
+            }.into()
         }
     }
 
@@ -390,11 +390,10 @@ mod commands {
     impl BitfieldOverflow {
         fn to_cmd(&self) -> RespValue {
             match self {
-                    &BitfieldOverflow::Wrap => "WRAP",
-                    &BitfieldOverflow::Sat => "SAT",
-                    &BitfieldOverflow::Fail => "FAIL",
-                }
-                .into()
+                &BitfieldOverflow::Wrap => "WRAP",
+                &BitfieldOverflow::Sat => "SAT",
+                &BitfieldOverflow::Fail => "FAIL",
+            }.into()
         }
     }
 
@@ -407,18 +406,16 @@ mod commands {
     impl BitfieldTypeAndValue {
         fn type_cmd(&self) -> RespValue {
             match self {
-                    &BitfieldTypeAndValue::Signed(size, _) => format!("i{}", size),
-                    &BitfieldTypeAndValue::Unsigned(size, _) => format!("u{}", size),
-                }
-                .into()
+                &BitfieldTypeAndValue::Signed(size, _) => format!("i{}", size),
+                &BitfieldTypeAndValue::Unsigned(size, _) => format!("u{}", size),
+            }.into()
         }
 
         fn value_cmd(&self) -> RespValue {
             match self {
-                    &BitfieldTypeAndValue::Signed(_, amt) => amt.to_string(),
-                    &BitfieldTypeAndValue::Unsigned(_, amt) => amt.to_string(),
-                }
-                .into()
+                &BitfieldTypeAndValue::Signed(_, amt) => amt.to_string(),
+                &BitfieldTypeAndValue::Unsigned(_, amt) => amt.to_string(),
+            }.into()
         }
     }
 
@@ -431,10 +428,9 @@ mod commands {
     impl BitfieldOffset {
         fn to_cmd(&self) -> RespValue {
             match self {
-                    &BitfieldOffset::Bits(size) => size.to_string(),
-                    &BitfieldOffset::Positional(size) => format!("#{}", size),
-                }
-                .into()
+                &BitfieldOffset::Bits(size) => size.to_string(),
+                &BitfieldOffset::Positional(size) => format!("#{}", size),
+            }.into()
         }
     }
 
@@ -476,7 +472,8 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn bitfield<K>(&self, (key, cmds): (K, &BitfieldCommands)) -> SendBox<Vec<Option<i64>>>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             self.send(cmds.to_cmd(key.into()))
         }
@@ -493,20 +490,20 @@ mod commands {
     impl From<BitOp> for RespValue {
         fn from(op: BitOp) -> RespValue {
             match op {
-                    BitOp::And => "AND",
-                    BitOp::Or => "OR",
-                    BitOp::Xor => "XOR",
-                    BitOp::Not => "NOT",
-                }
-                .into()
+                BitOp::And => "AND",
+                BitOp::Or => "OR",
+                BitOp::Xor => "XOR",
+                BitOp::Not => "NOT",
+            }.into()
         }
     }
 
     impl super::PairedConnection {
         pub fn bitop<K, T, C>(&self, (op, destkey, keys): (BitOp, K, C)) -> SendBox<i64>
-            where K: ToRespString + Into<RespValue>,
-                  T: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = T>
+        where
+            K: ToRespString + Into<RespValue>,
+            T: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = T>,
         {
             let key_len = keys.num_cmds();
             if key_len == 0 {
@@ -527,8 +524,9 @@ mod commands {
     }
 
     impl<K, B> BitposCommand for (K, B, usize)
-        where K: ToRespString + Into<RespValue>,
-              B: ToRespString + Into<RespValue>
+    where
+        K: ToRespString + Into<RespValue>,
+        B: ToRespString + Into<RespValue>,
     {
         fn to_cmd(self) -> RespValue {
             resp_array!["BITPOS", self.0, self.1, self.2.to_string()]
@@ -536,21 +534,25 @@ mod commands {
     }
 
     impl<K, B> BitposCommand for (K, B, usize, usize)
-        where K: ToRespString + Into<RespValue>,
-              B: ToRespString + Into<RespValue>
+    where
+        K: ToRespString + Into<RespValue>,
+        B: ToRespString + Into<RespValue>,
     {
         fn to_cmd(self) -> RespValue {
-            resp_array!["BITPOS",
-                        self.0,
-                        self.1,
-                        self.2.to_string(),
-                        self.3.to_string()]
+            resp_array![
+                "BITPOS",
+                self.0,
+                self.1,
+                self.2.to_string(),
+                self.3.to_string()
+            ]
         }
     }
 
     impl super::PairedConnection {
         pub fn bitpos<C>(&self, cmd: C) -> SendBox<i64>
-            where C: BitposCommand
+        where
+            C: BitposCommand,
         {
             self.send(cmd.to_cmd())
         }
@@ -558,10 +560,11 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn blpop<C, T, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
-            where C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>,
-                  K: FromResp + 'static,
-                  V: FromResp + 'static
+        where
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
+            K: FromResp + 'static,
+            V: FromResp + 'static,
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
@@ -578,10 +581,11 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn brpop<C, T, K, V>(&self, (keys, timeout): (C, usize)) -> SendBox<Option<(K, V)>>
-            where C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>,
-                  K: FromResp + 'static,
-                  V: FromResp + 'static
+        where
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
+            K: FromResp + 'static,
+            V: FromResp + 'static,
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
@@ -597,14 +601,21 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn brpoplpush<S, V, T>(&self,
-                                   (source, destination, timeout): (S, V, usize))
-                                   -> SendBox<Option<T>>
-            where S: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        pub fn brpoplpush<S, V, T>(
+            &self,
+            (source, destination, timeout): (S, V, usize),
+        ) -> SendBox<Option<T>>
+        where
+            S: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
-            self.send(resp_array!["BRPOPLPUSH", source, destination, timeout.to_string()])
+            self.send(resp_array![
+                "BRPOPLPUSH",
+                source,
+                destination,
+                timeout.to_string()
+            ])
         }
     }
 
@@ -619,7 +630,8 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn decrby<K>(&self, (key, increment): (K, i64)) -> SendBox<i64>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["DECRBY", key, increment.to_string()])
         }
@@ -627,8 +639,9 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn del<C, T>(&self, keys: (C)) -> SendBox<usize>
-            where C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>
+        where
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
         {
             let keys_len = keys.num_cmds();
             if keys_len == 0 {
@@ -649,15 +662,17 @@ mod commands {
     }
 
     impl super::PairedConnection {
-        pub fn eval<S, K, KT, A, AT, T>(&self,
-                                        (script, keys, args): (S, Option<K>, Option<A>))
-                                        -> SendBox<T>
-            where S: ToRespString + Into<RespValue>,
-                  K: CommandCollection<Command = KT>,
-                  KT: ToRespString + Into<RespValue>,
-                  A: CommandCollection<Command = KT>,
-                  AT: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        pub fn eval<S, K, KT, A, AT, T>(
+            &self,
+            (script, keys, args): (S, Option<K>, Option<A>),
+        ) -> SendBox<T>
+        where
+            S: ToRespString + Into<RespValue>,
+            K: CommandCollection<Command = KT>,
+            KT: ToRespString + Into<RespValue>,
+            A: CommandCollection<Command = KT>,
+            AT: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
             let args_len = args.as_ref().map(|a| a.num_cmds()).unwrap_or(0);
@@ -677,15 +692,17 @@ mod commands {
             self.send(RespValue::Array(cmd))
         }
 
-        pub fn evalsha<S, K, KT, A, AT, T>(&self,
-                                           (sha, keys, args): (S, Option<K>, Option<A>))
-                                           -> SendBox<T>
-            where S: ToRespString + Into<RespValue>,
-                  K: CommandCollection<Command = KT>,
-                  KT: ToRespString + Into<RespValue>,
-                  A: CommandCollection<Command = AT>,
-                  AT: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        pub fn evalsha<S, K, KT, A, AT, T>(
+            &self,
+            (sha, keys, args): (S, Option<K>, Option<A>),
+        ) -> SendBox<T>
+        where
+            S: ToRespString + Into<RespValue>,
+            K: CommandCollection<Command = KT>,
+            KT: ToRespString + Into<RespValue>,
+            A: CommandCollection<Command = AT>,
+            AT: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             let keys_len = keys.as_ref().map(|k| k.num_cmds()).unwrap_or(0);
             let args_len = args.as_ref().map(|a| a.num_cmds()).unwrap_or(0);
@@ -708,8 +725,9 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn exists<C, T>(&self, keys: (C)) -> SendBox<usize>
-            where C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>
+        where
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
         {
             let keys_len = keys.num_cmds();
             let mut cmd = Vec::with_capacity(1 + keys_len);
@@ -746,13 +764,15 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn expire<K>(&self, (key, seconds): (K, usize)) -> SendBox<ExpireResult>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["EXPIRE", key, seconds.to_string()])
         }
 
         pub fn expireat<K>(&self, (key, timestamp): (K, usize)) -> SendBox<ExpireResult>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["EXPIREAT", key, timestamp.to_string()])
         }
@@ -795,13 +815,15 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn flushall<F>(&self, cmd: F) -> SendBox<()>
-            where F: FlushallCommand
+        where
+            F: FlushallCommand,
         {
             self.send(cmd.to_cmd())
         }
 
         pub fn flushdb<F>(&self, cmd: F) -> SendBox<()>
-            where F: FlushdbCommand
+        where
+            F: FlushdbCommand,
         {
             self.send(cmd.to_cmd())
         }
@@ -835,9 +857,10 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn geoadd<K, C, T>(&self, (key, details): (K, C)) -> SendBox<usize>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = (f64, f64, T)>,
-                  T: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = (f64, f64, T)>,
+            T: ToRespString + Into<RespValue>,
         {
             let keys_len = details.num_cmds();
             if keys_len == 0 {
@@ -853,9 +876,10 @@ mod commands {
         }
 
         pub fn geohash<K, C, T>(&self, (key, members): (K, C)) -> SendBox<Vec<Option<String>>>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
         {
             let keys_len = members.num_cmds();
             if keys_len == 0 {
@@ -871,9 +895,10 @@ mod commands {
         }
 
         pub fn geopos<K, C, T>(&self, (key, members): (K, C)) -> SendBox<Vec<Option<(f64, f64)>>>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
         {
             let keys_len = members.num_cmds();
             if keys_len == 0 {
@@ -885,27 +910,28 @@ mod commands {
             cmd.push(key.into());
             members.add_to_cmd(&mut cmd);
 
-            let parsed = self.send(RespValue::Array(cmd))
-                .and_then(|response: Vec<Option<(String, String)>>| {
+            let parsed = self.send(RespValue::Array(cmd)).and_then(
+                |response: Vec<Option<(String, String)>>| {
                     let mut parsed = Vec::with_capacity(response.len());
                     for r in response {
                         parsed.push(match r {
-                                        Some((lng_s, lat_s)) => {
-                                            let lng = parse_f64(lng_s);
-                                            if lng.is_err() {
-                                                return future::err(lng.unwrap_err());
-                                            }
-                                            let lat = parse_f64(lat_s);
-                                            if lat.is_err() {
-                                                return future::err(lat.unwrap_err());
-                                            }
-                                            Some((lng.unwrap(), lat.unwrap()))
-                                        }
-                                        None => None,
-                                    });
+                            Some((lng_s, lat_s)) => {
+                                let lng = parse_f64(lng_s);
+                                if lng.is_err() {
+                                    return future::err(lng.unwrap_err());
+                                }
+                                let lat = parse_f64(lat_s);
+                                if lat.is_err() {
+                                    return future::err(lat.unwrap_err());
+                                }
+                                Some((lng.unwrap(), lat.unwrap()))
+                            }
+                            None => None,
+                        });
                     }
                     future::ok(parsed)
-                });
+                },
+            );
 
             Box::new(parsed)
         }
@@ -916,9 +942,10 @@ mod commands {
     }
 
     impl<K, M1, M2> GeodistCommand for (K, M1, M2)
-        where K: ToRespString + Into<RespValue>,
-              M1: ToRespString + Into<RespValue>,
-              M2: ToRespString + Into<RespValue>
+    where
+        K: ToRespString + Into<RespValue>,
+        M1: ToRespString + Into<RespValue>,
+        M2: ToRespString + Into<RespValue>,
     {
         fn to_cmd(self) -> RespValue {
             resp_array!["GEODIST", self.0, self.1, self.2]
@@ -926,9 +953,10 @@ mod commands {
     }
 
     impl<K, M1, M2> GeodistCommand for (K, M1, M2, GeoUnit)
-        where K: ToRespString + Into<RespValue>,
-              M1: ToRespString + Into<RespValue>,
-              M2: ToRespString + Into<RespValue>
+    where
+        K: ToRespString + Into<RespValue>,
+        M1: ToRespString + Into<RespValue>,
+        M2: ToRespString + Into<RespValue>,
     {
         fn to_cmd(self) -> RespValue {
             resp_array!["GEODIST", self.0, self.1, self.2, self.3.as_str()]
@@ -937,15 +965,15 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn geodist<C>(&self, cmd: C) -> SendBox<Option<f64>>
-            where C: GeodistCommand
+        where
+            C: GeodistCommand,
         {
-            let parsed = self.send(cmd.to_cmd())
-                .and_then(|response: Option<String>| match response {
-                              Some(string) => {
-                                  future::result(parse_f64(string).map(|dist| Some(dist)))
-                              }
-                              None => future::ok(None),
-                          });
+            let parsed = self.send(cmd.to_cmd()).and_then(
+                |response: Option<String>| match response {
+                    Some(string) => future::result(parse_f64(string).map(|dist| Some(dist))),
+                    None => future::ok(None),
+                },
+            );
 
             Box::new(parsed)
         }
@@ -981,7 +1009,8 @@ mod commands {
 
     #[derive(Clone, Default)]
     pub struct GeoradiusOptions<K>
-        where K: ToRespString + Into<RespValue> + Default
+    where
+        K: ToRespString + Into<RespValue> + Default,
     {
         pub key: K,
         pub location: GeoradiusLocation<K>,
@@ -1003,7 +1032,8 @@ mod commands {
     }
 
     impl<K> GeoradiusOptions<K>
-        where K: ToRespString + Into<RespValue> + Default
+    where
+        K: ToRespString + Into<RespValue> + Default,
     {
         fn parse_options(&self) -> GeoradiusParseOptions {
             GeoradiusParseOptions {
@@ -1121,22 +1151,23 @@ mod commands {
                     };
                     let member = FromResp::from_resp(ary.remove(idx))?;
                     Ok(GeoradiusResponse {
-                           member: member,
-                           dist: dist,
-                           hash: hash,
-                           coord: coord,
-                       })
+                        member: member,
+                        dist: dist,
+                        hash: hash,
+                        coord: coord,
+                    })
                 }
-                _ => {
-                    Err(error::Error::RESP(String::from("Not an array, cannot read an element of a GEORADIUS response",),
-                                           Some(resp)))
-                }
+                _ => Err(error::Error::RESP(
+                    String::from("Not an array, cannot read an element of a GEORADIUS response"),
+                    Some(resp),
+                )),
             }
         }
 
-        fn prepare_response(&self,
-                            resp: RespValue)
-                            -> Result<Vec<GeoradiusResponse>, error::Error> {
+        fn prepare_response(
+            &self,
+            resp: RespValue,
+        ) -> Result<Vec<GeoradiusResponse>, error::Error> {
             if let RespValue::Array(ary) = resp {
                 let mut response = Vec::with_capacity(ary.len());
                 for resp in ary {
@@ -1144,14 +1175,17 @@ mod commands {
                 }
                 Ok(response)
             } else {
-                Err(error::Error::RESP(String::from("Not an array, cannot read a GEORADIUS response",),
-                                       Some(resp)))
+                Err(error::Error::RESP(
+                    String::from("Not an array, cannot read a GEORADIUS response"),
+                    Some(resp),
+                ))
             }
         }
     }
 
     impl<K> From<(K, f64, f64, f64, GeoUnit)> for GeoradiusOptions<K>
-        where K: ToRespString + Into<RespValue> + Default
+    where
+        K: ToRespString + Into<RespValue> + Default,
     {
         fn from((key, lng, lat, radius, units): (K, f64, f64, f64, GeoUnit)) -> Self {
             GeoradiusOptions {
@@ -1165,7 +1199,8 @@ mod commands {
     }
 
     impl<K> From<(K, K, f64, GeoUnit)> for GeoradiusOptions<K>
-        where K: ToRespString + Into<RespValue> + Default
+    where
+        K: ToRespString + Into<RespValue> + Default,
     {
         fn from((key, member, radius, units): (K, K, f64, GeoUnit)) -> Self {
             GeoradiusOptions {
@@ -1187,21 +1222,23 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn georadius<O, K>(&self, options: O) -> SendBox<Vec<GeoradiusResponse>>
-            where O: Into<GeoradiusOptions<K>>,
-                  K: ToRespString + Into<RespValue> + Default + 'static
+        where
+            O: Into<GeoradiusOptions<K>>,
+            K: ToRespString + Into<RespValue> + Default + 'static,
         {
             let options = options.into();
             let parse_options = options.parse_options();
             let parsed_future = self.send(options.to_cmd())
                 .and_then(move |resp: RespValue| {
-                              future::result(parse_options.prepare_response(resp))
-                          });
+                    future::result(parse_options.prepare_response(resp))
+                });
             Box::new(parsed_future)
         }
 
         pub fn georadiusbymember<O, K>(&self, options: O) -> SendBox<Vec<GeoradiusResponse>>
-            where O: Into<GeoradiusOptions<K>>,
-                  K: ToRespString + Into<RespValue> + Default + 'static
+        where
+            O: Into<GeoradiusOptions<K>>,
+            K: ToRespString + Into<RespValue> + Default + 'static,
         {
             self.georadius(options)
         }
@@ -1209,8 +1246,9 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn get<K, T>(&self, key: (K)) -> SendBox<Option<T>>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["GET", key])
         }
@@ -1218,7 +1256,8 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn getbit<K>(&self, (key, offset): (K, usize)) -> SendBox<usize>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["GETBIT", key, offset.to_string()])
         }
@@ -1226,18 +1265,25 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn getrange<K, T>(&self, (key, start, end): (K, i64, i64)) -> SendBox<T>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
-            self.send(resp_array!["GETRANGE", key, start.to_string(), end.to_string()])
+            self.send(resp_array![
+                "GETRANGE",
+                key,
+                start.to_string(),
+                end.to_string()
+            ])
         }
     }
 
     impl super::PairedConnection {
         pub fn getset<K, V, T>(&self, (key, value): (K, V)) -> SendBox<Option<T>>
-            where K: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["GETSET", key, value])
         }
@@ -1245,9 +1291,10 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn hdel<K, C, T>(&self, (key, fields): (K, C)) -> SendBox<usize>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
         {
             let num_fields = fields.num_cmds();
             if num_fields == 0 {
@@ -1265,58 +1312,67 @@ mod commands {
         simple_command!(hexists, "HEXISTS", [(key: K), (field: F)], usize);
 
         pub fn hget<K, F, T>(&self, (key, field): (K, F)) -> SendBox<Option<T>>
-            where K: ToRespString + Into<RespValue>,
-                  F: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            F: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["HGET", key, field])
         }
 
         pub fn hgetall<K, F, T>(&self, key: (K)) -> SendBox<HashMap<F, T>>
-            where K: ToRespString + Into<RespValue>,
-                  F: FromResp + Eq + Hash + 'static,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            F: FromResp + Eq + Hash + 'static,
+            T: FromResp + 'static,
         {
-            let fut = self.send(resp_array!["HGETALL", key]).and_then(|mut resp:Vec<RespValue>| {
-                let resp_len = resp.len();
-                if resp_len % 2 != 0 {
-                    return future::err(error::internal("Not an even number of results, cannot be a hash"));
-                }
-                let mut hash = HashMap::with_capacity(resp_len);
-                let mut resp_iter = resp.drain(..);
-                for _ in 0..(resp_len / 2) {
-                    let key = match F::from_resp(resp_iter.next().expect("Next key")) {
-                        Ok(key) => key,
-                        Err(e) => return future::err(e),
-                    };
-                    let value = match T::from_resp(resp_iter.next().expect("Next value")) {
-                        Ok(value) => value,
-                        Err(e) => return future::err(e),
-                    };
-                    hash.insert(key, value);
-                }
-                future::ok(hash)
-            });
+            let fut = self.send(resp_array!["HGETALL", key]).and_then(
+                |mut resp: Vec<RespValue>| {
+                    let resp_len = resp.len();
+                    if resp_len % 2 != 0 {
+                        return future::err(error::internal(
+                            "Not an even number of results, cannot be a hash",
+                        ));
+                    }
+                    let mut hash = HashMap::with_capacity(resp_len);
+                    let mut resp_iter = resp.drain(..);
+                    for _ in 0..(resp_len / 2) {
+                        let key = match F::from_resp(resp_iter.next().expect("Next key")) {
+                            Ok(key) => key,
+                            Err(e) => return future::err(e),
+                        };
+                        let value = match T::from_resp(resp_iter.next().expect("Next value")) {
+                            Ok(value) => value,
+                            Err(e) => return future::err(e),
+                        };
+                        hash.insert(key, value);
+                    }
+                    future::ok(hash)
+                },
+            );
             Box::new(fut)
         }
 
         pub fn hincrby<K, F>(&self, (key, field, inc): (K, F, i64)) -> SendBox<i64>
-            where K: ToRespString + Into<RespValue>,
-                  F: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            F: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["HINCRBY", key, field, inc.to_string()])
         }
 
         pub fn hincrbyfloat<K, F>(&self, (key, field, inc): (K, F, f64)) -> SendBox<f64>
-            where K: ToRespString + Into<RespValue>,
-                  F: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            F: ToRespString + Into<RespValue>,
         {
             string_to_f64(self.send(resp_array!["HINCRBYFLOAT", key, field, inc.to_string()]))
         }
 
         pub fn hkeys<K, T>(&self, key: (K)) -> SendBox<Vec<T>>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["HKEYS", key])
         }
@@ -1324,10 +1380,11 @@ mod commands {
         simple_command!(hlen, "HLEN", (key: K), usize);
 
         pub fn hmget<K, C, T, V>(&self, (key, fields): (K, C)) -> SendBox<Vec<Option<V>>>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = T>,
-                  T: ToRespString + Into<RespValue>,
-                  V: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = T>,
+            T: ToRespString + Into<RespValue>,
+            V: FromResp + 'static,
         {
             let num_fields = fields.num_cmds();
             if num_fields == 0 {
@@ -1343,10 +1400,11 @@ mod commands {
         }
 
         pub fn hmset<K, C, F, V>(&self, (key, field_values): (K, C)) -> SendBox<()>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = (F, V)>,
-                  F: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = (F, V)>,
+            F: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
         {
             let num_cmds = field_values.num_cmds();
             if num_cmds == 0 {
@@ -1366,8 +1424,9 @@ mod commands {
         simple_command!(hstrlen, "HSTRLEN", [(key: K), (field: F)], usize);
 
         pub fn hvals<K, T>(&self, key: (K)) -> SendBox<Vec<T>>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["HVALS", key.into()])
         }
@@ -1377,13 +1436,15 @@ mod commands {
         simple_command!(incr, "INCR", (key: K), i64);
 
         pub fn incrby<K>(&self, (key, increment): (K, i64)) -> SendBox<i64>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["INCRBY", key, increment.to_string()])
         }
 
         pub fn incrbyfloat<K>(&self, (key, increment): (K, f64)) -> SendBox<f64>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
             string_to_f64(self.send(resp_array!["INCRBYFLOAT", key, increment.to_string()]))
         }
@@ -1393,8 +1454,9 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn keys<P, T>(&self, pattern: (P)) -> SendBox<Vec<T>>
-            where P: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            P: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["KEYS", pattern])
         }
@@ -1406,8 +1468,9 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn lindex<K, T>(&self, (key, index): (K, usize)) -> SendBox<Option<T>>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["LINDEX", key, index.to_string()])
         }
@@ -1422,28 +1485,33 @@ mod commands {
         fn from(from: BeforeAfter) -> Self {
             use self::BeforeAfter::*;
             match from {
-                    Before => "BEFORE",
-                    After => "AFTER",
-                }
-                .into()
+                Before => "BEFORE",
+                After => "AFTER",
+            }.into()
         }
     }
 
     impl From<bool> for BeforeAfter {
         fn from(from: bool) -> Self {
             use self::BeforeAfter::*;
-            if from { Before } else { After }
+            if from {
+                Before
+            } else {
+                After
+            }
         }
     }
 
     impl super::PairedConnection {
-        pub fn linsert<K, B, P, V>(&self,
-                                   (key, before_aft, pivot, value): (K, B, P, V))
-                                   -> SendBox<i64>
-            where K: ToRespString + Into<RespValue>,
-                  P: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>,
-                  B: Into<BeforeAfter>
+        pub fn linsert<K, B, P, V>(
+            &self,
+            (key, before_aft, pivot, value): (K, B, P, V),
+        ) -> SendBox<i64>
+        where
+            K: ToRespString + Into<RespValue>,
+            P: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
+            B: Into<BeforeAfter>,
         {
             self.send(resp_array!["LINSERT", key, before_aft.into(), pivot, value])
         }
@@ -1455,16 +1523,18 @@ mod commands {
 
     impl super::PairedConnection {
         pub fn lpop<K, T>(&self, key: (K)) -> SendBox<Option<T>>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
             self.send(resp_array!["LPOP", key])
         }
 
         pub fn lpush<K, C, V>(&self, (key, values): (K, C)) -> SendBox<usize>
-            where K: ToRespString + Into<RespValue>,
-                  C: CommandCollection<Command = V>,
-                  V: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            C: CommandCollection<Command = V>,
+            V: ToRespString + Into<RespValue>,
         {
             let num_cmds = values.num_cmds();
             if num_cmds == 0 {
@@ -1482,30 +1552,44 @@ mod commands {
         simple_command!(lpushx, "LPUSHX", [(key: K), (value: V)], usize);
 
         pub fn lrange<K, T>(&self, (key, start, end): (K, i64, i64)) -> SendBox<Vec<T>>
-            where K: ToRespString + Into<RespValue>,
-                  T: FromResp + 'static
+        where
+            K: ToRespString + Into<RespValue>,
+            T: FromResp + 'static,
         {
-            self.send(resp_array!["LRANGE", key, start.to_string(), end.to_string()])
+            self.send(resp_array![
+                "LRANGE",
+                key,
+                start.to_string(),
+                end.to_string()
+            ])
         }
 
         pub fn lrem<K, V>(&self, (key, count, value): (K, i64, V)) -> SendBox<usize>
-            where K: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["LREM", key, count.to_string(), value])
         }
 
         pub fn lset<K, V>(&self, (key, index, value): (K, i64, V)) -> SendBox<()>
-            where K: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["LSET", key, index.to_string(), value])
         }
 
         pub fn ltrim<K>(&self, (key, start, stop): (K, i64, i64)) -> SendBox<()>
-            where K: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
         {
-            self.send(resp_array!["LTRIM", key, start.to_string(), stop.to_string()])
+            self.send(resp_array![
+                "LTRIM",
+                key,
+                start.to_string(),
+                stop.to_string()
+            ])
         }
     }
 
@@ -1514,8 +1598,9 @@ mod commands {
     impl super::PairedConnection {
         // TODO: incomplete implementation
         pub fn set<K, V>(&self, (key, value): (K, V)) -> SendBox<()>
-            where K: ToRespString + Into<RespValue>,
-                  V: ToRespString + Into<RespValue>
+        where
+            K: ToRespString + Into<RespValue>,
+            V: ToRespString + Into<RespValue>,
         {
             self.send(resp_array!["SET", key, value])
         }
@@ -1530,8 +1615,8 @@ mod commands {
 
         use tokio_core::reactor::Core;
 
-        use super::{BitfieldCommands, BitfieldTypeAndValue, BitfieldOffset, BitfieldOverflow,
-                    GeoradiusOptions, GeoradiusOrder, GeoUnit};
+        use super::{BitfieldCommands, BitfieldOffset, BitfieldOverflow, BitfieldTypeAndValue,
+                    GeoUnit, GeoradiusOptions, GeoradiusOrder};
 
         use super::super::error::Error;
 
@@ -1556,8 +1641,8 @@ mod commands {
         fn append_test() {
             let (mut core, connection) = setup_and_delete(vec!["APPENDKEY"]);
 
-            let connection = connection
-                .and_then(|connection| connection.append(("APPENDKEY", "ABC")));
+            let connection =
+                connection.and_then(|connection| connection.append(("APPENDKEY", "ABC")));
 
             let count = core.run(connection).unwrap();
             assert_eq!(count, 3);
@@ -1571,12 +1656,12 @@ mod commands {
                 connection
                     .set(("BITCOUNT_KEY", "foobar"))
                     .and_then(move |_| {
-                                  let mut counts = Vec::new();
-                                  counts.push(connection.bitcount("BITCOUNT_KEY"));
-                                  counts.push(connection.bitcount(("BITCOUNT_KEY", 0, 0)));
-                                  counts.push(connection.bitcount(("BITCOUNT_KEY", 1, 1)));
-                                  future::join_all(counts)
-                              })
+                        let mut counts = Vec::new();
+                        counts.push(connection.bitcount("BITCOUNT_KEY"));
+                        counts.push(connection.bitcount(("BITCOUNT_KEY", 0, 0)));
+                        counts.push(connection.bitcount(("BITCOUNT_KEY", 1, 1)));
+                        future::join_all(counts)
+                    })
             });
 
             let counts = core.run(connection).unwrap();
@@ -1592,11 +1677,15 @@ mod commands {
 
             let connection = connection.and_then(|connection| {
                 let mut bitfield_commands = BitfieldCommands::new();
-                bitfield_commands.incrby(BitfieldOffset::Bits(100),
-                                         BitfieldTypeAndValue::Unsigned(2, 1));
+                bitfield_commands.incrby(
+                    BitfieldOffset::Bits(100),
+                    BitfieldTypeAndValue::Unsigned(2, 1),
+                );
                 bitfield_commands.overflow(BitfieldOverflow::Sat);
-                bitfield_commands.incrby(BitfieldOffset::Bits(102),
-                                         BitfieldTypeAndValue::Unsigned(2, 1));
+                bitfield_commands.incrby(
+                    BitfieldOffset::Bits(102),
+                    BitfieldTypeAndValue::Unsigned(2, 1),
+                );
 
                 connection.bitfield(("BITFIELD_KEY", &bitfield_commands))
             });
@@ -1614,8 +1703,10 @@ mod commands {
             let connection = connection.and_then(|connection| {
                 let mut bitfield_commands = BitfieldCommands::new();
                 bitfield_commands.overflow(BitfieldOverflow::Fail);
-                bitfield_commands.incrby(BitfieldOffset::Bits(102),
-                                         BitfieldTypeAndValue::Unsigned(2, 4));
+                bitfield_commands.incrby(
+                    BitfieldOffset::Bits(102),
+                    BitfieldTypeAndValue::Unsigned(2, 4),
+                );
                 connection.bitfield(("BITFIELD_NIL_KEY", &bitfield_commands))
             });
 
@@ -1628,12 +1719,11 @@ mod commands {
         fn decr_test() {
             let (mut core, connection) = setup_and_delete(vec!["DECR_KEY"]);
 
-            let connection =
-                connection.and_then(|connection| {
-                                        connection
-                                            .set(("DECR_KEY", "123"))
-                                            .and_then(move |_| connection.decr("DECR_KEY"))
-                                    });
+            let connection = connection.and_then(|connection| {
+                connection
+                    .set(("DECR_KEY", "123"))
+                    .and_then(move |_| connection.decr("DECR_KEY"))
+            });
 
             let result = core.run(connection).unwrap();
             assert_eq!(result, 122);
@@ -1732,12 +1822,11 @@ mod commands {
         fn dump_test() {
             let (mut core, connection) = setup_and_delete(vec!["DUMP_TEST"]);
 
-            let connection =
-                connection.and_then(|connection| {
-                                        connection
-                                            .set(("DUMP_TEST", "123"))
-                                            .and_then(move |_| connection.dump("DUMP_TEST"))
-                                    });
+            let connection = connection.and_then(|connection| {
+                connection
+                    .set(("DUMP_TEST", "123"))
+                    .and_then(move |_| connection.dump("DUMP_TEST"))
+            });
 
             let result = core.run(connection).unwrap();
             let _: Vec<u8> = result.unwrap();
@@ -1757,9 +1846,13 @@ mod commands {
         fn geoadd_test() {
             let (mut core, connection) = setup_and_delete(vec!["GEOADD_TEST"]);
             let connection = connection.and_then(|connection| {
-                connection.geoadd(("GEOADD_TEST",
-                                   [(13.361389, 38.115556, "Palermo"),
-                                    (15.087269, 37.502669, "Catania")]))
+                connection.geoadd((
+                    "GEOADD_TEST",
+                    [
+                        (13.361389, 38.115556, "Palermo"),
+                        (15.087269, 37.502669, "Catania"),
+                    ],
+                ))
             });
 
             let result = core.run(connection).unwrap();
@@ -1771,13 +1864,16 @@ mod commands {
             let (mut core, connection) = setup_and_delete(vec!["GEOHASH_TEST"]);
             let connection = connection.and_then(|connection| {
                 connection
-                    .geoadd(("GEOHASH_TEST",
-                             [(13.361389, 38.115556, "Palermo"),
-                              (15.087269, 37.502669, "Catania")]))
+                    .geoadd((
+                        "GEOHASH_TEST",
+                        [
+                            (13.361389, 38.115556, "Palermo"),
+                            (15.087269, 37.502669, "Catania"),
+                        ],
+                    ))
                     .and_then(move |_| {
-                                  connection.geohash(("GEOHASH_TEST",
-                                                      ["Palermo", "Noway", "Catania"]))
-                              })
+                        connection.geohash(("GEOHASH_TEST", ["Palermo", "Noway", "Catania"]))
+                    })
             });
 
             let result = core.run(connection).unwrap();
@@ -1792,9 +1888,13 @@ mod commands {
             let (mut core, connection) = setup_and_delete(vec!["GEORADIUS_TEST"]);
             let connection = connection.and_then(|connection| {
                 connection
-                    .geoadd(("GEORADIUS_TEST",
-                             [(13.361389, 38.115556, "Palermo"),
-                              (15.087269, 37.502669, "Catania")]))
+                    .geoadd((
+                        "GEORADIUS_TEST",
+                        [
+                            (13.361389, 38.115556, "Palermo"),
+                            (15.087269, 37.502669, "Catania"),
+                        ],
+                    ))
                     .and_then(move |_| {
                         let mut options: GeoradiusOptions<&str> =
                             ("GEORADIUS_TEST", 15.0, 37.0, 200.0, GeoUnit::Km).into();
@@ -1830,12 +1930,18 @@ mod commands {
             assert_eq!(results[1].len(), 2);
             assert_eq!(results[1][0].member, "Palermo");
             assert_eq!(results[1][0].dist, None);
-            assert_eq!(results[1][0].coord, Some((13.36138933897018433, 38.11555639549629859)));
+            assert_eq!(
+                results[1][0].coord,
+                Some((13.36138933897018433, 38.11555639549629859))
+            );
 
             assert_eq!(results[2].len(), 2);
             assert_eq!(results[2][0].member, "Palermo");
             assert_eq!(results[2][0].dist, Some(190.4424));
-            assert_eq!(results[2][0].coord, Some((13.36138933897018433, 38.11555639549629859)));
+            assert_eq!(
+                results[2][0].coord,
+                Some((13.36138933897018433, 38.11555639549629859))
+            );
         }
 
         #[test]
@@ -1859,14 +1965,13 @@ mod commands {
         fn hmget_test() {
             let (mut core, connection) = setup_and_delete(vec!["HMGET_TEST"]);
             let connection = connection.and_then(|connection| {
-                let setter = connection
-                    .hmset(("HMGET_TEST", [("field1", "Hello"), ("field2", "World")]));
+                let setter =
+                    connection.hmset(("HMGET_TEST", [("field1", "Hello"), ("field2", "World")]));
                 setter.and_then(move |_| {
-                                    let len = connection.hlen("HMGET_TEST");
-                                    let gets = connection.hmget(("HMGET_TEST",
-                                                                 ["field1", "field2"]));
-                                    len.join(gets)
-                                })
+                    let len = connection.hlen("HMGET_TEST");
+                    let gets = connection.hmget(("HMGET_TEST", ["field1", "field2"]));
+                    len.join(gets)
+                })
             });
 
             let (len, gets): (_, Vec<Option<String>>) = core.run(connection).unwrap();
@@ -1891,11 +1996,13 @@ mod commands {
         fn lpush_lpop_test() {
             let (mut core, connection) = setup_and_delete(vec!["LPUSH_LPOP_TEST"]);
             let connection = connection.and_then(|connection| {
-                connection.lpush(("LPUSH_LPOP_TEST", ["V1", "V2", "V3"])).and_then(move |_| {
-                    let first = connection.lpop("LPUSH_LPOP_TEST");
-                    let second = connection.lpop("LPUSH_LPOP_TEST");
-                    first.join(second)
-                })
+                connection
+                    .lpush(("LPUSH_LPOP_TEST", ["V1", "V2", "V3"]))
+                    .and_then(move |_| {
+                        let first = connection.lpop("LPUSH_LPOP_TEST");
+                        let second = connection.lpop("LPUSH_LPOP_TEST");
+                        first.join(second)
+                    })
             });
 
             let (first, second) = core.run(connection).unwrap();
@@ -1907,12 +2014,12 @@ mod commands {
         fn lrange_test() {
             let (mut core, connection) = setup_and_delete(vec!["LRANGE_TEST"]);
             let connection = connection.and_then(|connection| {
-                connection.lpush(("LRANGE_TEST", ["V1", "V2", "V3"])).and_then(move |_| {
-                    connection.lrange(("LRANGE_TEST", 0, 3))
-                })
+                connection
+                    .lpush(("LRANGE_TEST", ["V1", "V2", "V3"]))
+                    .and_then(move |_| connection.lrange(("LRANGE_TEST", 0, 3)))
             });
 
-            let data:Vec<String> = core.run(connection).unwrap();
+            let data: Vec<String> = core.run(connection).unwrap();
             assert_eq!(data.len(), 3);
             assert_eq!(data[0], "V3");
             assert_eq!(data[1], "V2");

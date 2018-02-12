@@ -77,10 +77,8 @@ impl FromResp for RespValue {
 impl FromResp for String {
     fn from_resp_int(resp: RespValue) -> Result<Self, Error> {
         match resp {
-            RespValue::BulkString(bytes) => {
-                String::from_utf8(bytes)
-                    .map_err(|e| Error::RESP(format!("Invalid UTF-8: {:?}", e.into_bytes()), None))
-            }
+            RespValue::BulkString(bytes) => String::from_utf8(bytes)
+                .map_err(|e| Error::RESP(format!("Invalid UTF-8: {:?}", e.into_bytes()), None)),
             RespValue::SimpleString(string) => Ok(string),
             _ => Err(error::resp("Cannot convert into a string", resp)),
         }
@@ -145,9 +143,10 @@ impl<A: FromResp, B: FromResp> FromResp for (A, B) {
                     let first = ary.remove(0);
                     Ok((A::from_resp(first)?, B::from_resp(second)?))
                 } else {
-                    Err(error::Error::RESP(format!("Array needs to be 2 elements, is: {}",
-                                                   ary.len()),
-                                           None))
+                    Err(error::Error::RESP(
+                        format!("Array needs to be 2 elements, is: {}", ary.len()),
+                        None,
+                    ))
                 }
             }
             _ => Err(error::resp("Cannot be converted into a tuple", resp)),
@@ -158,16 +157,13 @@ impl<A: FromResp, B: FromResp> FromResp for (A, B) {
 impl FromResp for () {
     fn from_resp_int(resp: RespValue) -> Result<(), Error> {
         match resp {
-            RespValue::SimpleString(string) => {
-                match string.as_ref() {
-                    "OK" => Ok(()),
-                    _ => {
-                        Err(Error::RESP(format!("Unexpected value within SimpleString: {}",
-                                                string),
-                                        None))
-                    }
-                }
-            }
+            RespValue::SimpleString(string) => match string.as_ref() {
+                "OK" => Ok(()),
+                _ => Err(Error::RESP(
+                    format!("Unexpected value within SimpleString: {}", string),
+                    None,
+                )),
+            },
             _ => Err(error::resp("Unexpected value", resp)),
         }
     }
@@ -372,7 +368,12 @@ fn scan_integer<'a>(buf: &'a mut BytesMut, idx: usize) -> Result<Option<(usize, 
             (false, b'\r') => at_end = true,
             (false, b'0'...b'9') => (),
             (false, b'-') => (),
-            (_, val) => return Err(parse_error(format!("Unexpected byte in size_string: {}", val))),
+            (_, val) => {
+                return Err(parse_error(format!(
+                    "Unexpected byte in size_string: {}",
+                    val
+                )))
+            }
         }
         pos += 1;
     }
@@ -548,8 +549,10 @@ mod tests {
         let mut bytes = BytesMut::new();
         let mut codec = RespCodec;
         codec.encode(resp_object.clone(), &mut bytes).unwrap();
-        assert_eq!(b"*2\r\n$5\r\nTEST1\r\n$5\r\nTEST2\r\n".to_vec(),
-                   bytes.to_vec());
+        assert_eq!(
+            b"*2\r\n$5\r\nTEST1\r\n$5\r\nTEST2\r\n".to_vec(),
+            bytes.to_vec()
+        );
 
         let deserialized = codec.decode(&mut bytes).unwrap().unwrap();
         assert_eq!(deserialized, resp_object);

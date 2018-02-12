@@ -40,19 +40,17 @@ fn main() {
 
     let send_data = test_f.and_then(|connection| {
         let connection = Arc::new(connection);
-        let futures = test_data
-            .into_iter()
-            .map(move |data| {
-                let connection_inner = connection.clone();
-                connection
-                    .send(resp_array!["INCR", "realistic_test_ctr"])
-                    .and_then(move |ctr: i64| {
-                                  let key = format!("rt_{}", ctr);
-                                  let d_val = data.0.to_string();
-                                  faf!(connection_inner.send(resp_array!["SET", &key, d_val]));
-                                  connection_inner.send(resp_array!["SET", data.1, key])
-                              })
-            });
+        let futures = test_data.into_iter().map(move |data| {
+            let connection_inner = connection.clone();
+            connection
+                .send(resp_array!["INCR", "realistic_test_ctr"])
+                .and_then(move |ctr: i64| {
+                    let key = format!("rt_{}", ctr);
+                    let d_val = data.0.to_string();
+                    faf!(connection_inner.send(resp_array!["SET", &key, d_val]));
+                    connection_inner.send(resp_array!["SET", data.1, key])
+                })
+        });
         future::join_all(futures)
     });
 

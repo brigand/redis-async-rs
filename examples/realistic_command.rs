@@ -39,19 +39,15 @@ fn main() {
 
     let send_data = test_f.and_then(|connection| {
         let connection = Arc::new(connection);
-        let futures = test_data
-            .into_iter()
-            .map(move |data| {
-                let connection_inner = connection.clone();
-                connection
-                    .incr("realistic_test_ctr")
-                    .and_then(move |ctr| {
-                                  let key = format!("rt_{}", ctr);
-                                  let d_val = data.0.to_string();
-                                  connection_inner.set((&key, d_val));
-                                  connection_inner.set((data.1, key))
-                              })
-            });
+        let futures = test_data.into_iter().map(move |data| {
+            let connection_inner = connection.clone();
+            connection.incr("realistic_test_ctr").and_then(move |ctr| {
+                let key = format!("rt_{}", ctr);
+                let d_val = data.0.to_string();
+                connection_inner.set((&key, d_val));
+                connection_inner.set((data.1, key))
+            })
+        });
         future::join_all(futures)
     });
 

@@ -48,13 +48,13 @@ mod test {
         let connection = super::connect(&addr, &core.handle())
             .map_err(|e| e.into())
             .and_then(|connection| {
-                          let a = connection
-                              .sender
-                              .send(resp_array!["PING", "TEST"])
-                              .map_err(|e| e.into());
-                          let b = connection.receiver.take(1).collect();
-                          a.join(b)
-                      });
+                let a = connection
+                    .sender
+                    .send(resp_array!["PING", "TEST"])
+                    .map_err(|e| e.into());
+                let b = connection.receiver.take(1).collect();
+                a.join(b)
+            });
 
         let (_, values) = core.run(connection).unwrap();
         assert_eq!(values.len(), 1);
@@ -70,11 +70,9 @@ mod test {
             .and_then(|connection| {
                 let mut ops = Vec::<resp::RespValue>::new();
                 ops.push(resp_array!["FLUSH"]);
-                ops.extend((0..1000).map(|i| {
-                                             resp_array!["SADD",
-                                                         "test_set",
-                                                         format!("VALUE: {}", i)]
-                                         }));
+                ops.extend(
+                    (0..1000).map(|i| resp_array!["SADD", "test_set", format!("VALUE: {}", i)]),
+                );
                 ops.push(resp_array!["SMEMBERS", "test_set"]);
                 let send = connection
                     .sender
@@ -117,8 +115,8 @@ mod test {
             connection
                 .send(resp_array!["INCR", "CTR"])
                 .and_then(move |value: i64| {
-                              connection.send(resp_array!["SET", "LASTCTR", value.to_string()])
-                          })
+                    connection.send(resp_array!["SET", "LASTCTR", value.to_string()])
+                })
         });
         let result: String = core.run(connect_f).unwrap();
         assert_eq!(result, "OK");
@@ -150,23 +148,21 @@ mod test {
         let addr = "127.0.0.1:6379".parse().unwrap();
         let paired_c = super::paired_connect(&addr, &handle);
         let pubsub_c = super::pubsub_connect(&addr, &handle);
-        let msgs = paired_c
-            .join(pubsub_c)
-            .and_then(|(paired, pubsub)| {
-                let subscribe = pubsub.subscribe("test-topic");
-                subscribe.and_then(move |msgs| {
-                    faf!(paired.send(resp_array!["PUBLISH", "test-topic", "test-message"]));
-                    faf!(paired.send(resp_array!["PUBLISH", "test-not-topic", "test-message-1.5"]));
-                    paired
-                        .send(resp_array!["PUBLISH", "test-topic", "test-message2"])
-                        .map(|_: resp::RespValue| msgs)
-                })
-            });
+        let msgs = paired_c.join(pubsub_c).and_then(|(paired, pubsub)| {
+            let subscribe = pubsub.subscribe("test-topic");
+            subscribe.and_then(move |msgs| {
+                faf!(paired.send(resp_array!["PUBLISH", "test-topic", "test-message"]));
+                faf!(paired.send(resp_array!["PUBLISH", "test-not-topic", "test-message-1.5"]));
+                paired
+                    .send(resp_array!["PUBLISH", "test-topic", "test-message2"])
+                    .map(|_: resp::RespValue| msgs)
+            })
+        });
         let tst = msgs.and_then(|msgs| {
-                                    msgs.take(2)
-                                        .collect()
-                                        .map_err(|_| error::internal("unreachable"))
-                                });
+            msgs.take(2)
+                .collect()
+                .map_err(|_| error::internal("unreachable"))
+        });
         let result = core.run(tst).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], "test-message".into());

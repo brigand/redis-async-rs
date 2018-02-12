@@ -9,9 +9,9 @@
  */
 
 extern crate futures;
-extern crate tokio_core;
 #[macro_use]
 extern crate redis_async;
+extern crate tokio_core;
 
 use std::env;
 
@@ -38,11 +38,11 @@ fn main() {
                 .send(resp_array!["MONITOR"])
                 .map_err(|e| e.into())
                 .and_then(move |_| {
-                              receiver.for_each(|incoming| {
-                                                    println!("{:?}", incoming);
-                                                    future::ok(())
-                                                })
-                          })
+                    receiver.for_each(|incoming| {
+                        println!("{:?}", incoming);
+                        future::ok(())
+                    })
+                })
         });
 
     core.run(monitor).unwrap();

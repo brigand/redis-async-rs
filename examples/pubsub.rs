@@ -9,8 +9,8 @@
  */
 
 extern crate futures;
-extern crate tokio_core;
 extern crate redis_async;
+extern crate tokio_core;
 
 use std::env;
 
@@ -35,13 +35,12 @@ fn main() {
 
     let msgs = client::pubsub_connect(&addr, &handle)
         .and_then(move |connection| connection.subscribe(topic));
-    let the_loop = msgs.map_err(|_| ())
-        .and_then(|msgs| {
-                      msgs.for_each(|message| {
-                                        println!("{}", String::from_resp(message).unwrap());
-                                        future::ok(())
-                                    })
-                  });
+    let the_loop = msgs.map_err(|_| ()).and_then(|msgs| {
+        msgs.for_each(|message| {
+            println!("{}", String::from_resp(message).unwrap());
+            future::ok(())
+        })
+    });
 
     core.run(the_loop).unwrap();
 }
