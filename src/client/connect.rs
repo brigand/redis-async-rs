@@ -28,6 +28,7 @@ pub fn connect(
     let con = TcpStream::connect(addr).map(move |socket| {
         let framed = socket.framed(resp::RespCodec);
         let (write_f, read_f) = framed.split();
+        let write_f = write_f.buffer(100);
         ClientConnection {
             sender: Box::new(write_f),
             receiver: Box::new(read_f),
