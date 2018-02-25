@@ -57,6 +57,7 @@ extern crate bytes;
 extern crate futures;
 #[macro_use]
 extern crate log;
+extern crate lwactors;
 extern crate tokio;
 extern crate tokio_io;
 

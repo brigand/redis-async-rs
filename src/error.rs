@@ -14,6 +14,8 @@ use std::{error, fmt, io};
 
 use futures::sync::{mpsc, oneshot};
 
+use lwactors::ActorError;
+
 use resp;
 
 #[derive(Debug)]
@@ -66,6 +68,12 @@ impl From<oneshot::Canceled> for Error {
 impl<T: 'static + Send> From<mpsc::SendError<T>> for Error {
     fn from(err: mpsc::SendError<T>) -> Error {
         Error::Unexpected(format!("Cannot write to channel: {}", err))
+    }
+}
+
+impl From<ActorError> for Error {
+    fn from(err: ActorError) -> Error {
+        internal(format!("Internal actor failed: {}", err))
     }
 }
 

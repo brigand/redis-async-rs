@@ -10,11 +10,12 @@
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
 
 use futures::{future, Future, Sink, Stream};
 use futures::future::Executor;
 use futures::sync::{mpsc, oneshot};
+
+use lwactors::{actor, Action, ActorSender};
 
 use error;
 use resp;
@@ -34,50 +35,46 @@ where
         .and_then(move |connection| {
             let ClientConnection { sender, receiver } = connection;
             let (out_tx, out_rx) = mpsc::unbounded();
-            let running = Arc::new(Mutex::new(true));
-            let sender_running = running.clone();
+            let paired_connection = PairedConnection {
+                queue: actor(
+                    &executor,
+                    PairedConnectionState {
+                        running: true,
+                        out_tx: out_tx,
+                        resp_queue: VecDeque::new(),
+                    },
+                ),
+            };
+            let pc_sender = paired_connection.clone();
             let sender = Box::new(
                 sender
                     .sink_map_err(|e| error!("Sender error: {}", e))
                     .send_all(out_rx)
                     .then(move |r| {
-                        let mut lock = sender_running.lock().expect("Lock is tainted");
-                        *lock = false;
-                        match r {
-                            Ok(_) => {
-                                info!("Sender stream closed...");
-                                future::ok(())
-                            }
-                            Err(e) => {
-                                error!("Error occurred: {:?}", e);
-                                future::err(())
-                            }
-                        }
+                        pc_sender
+                            .stop()
+                            .map_err(|e| error!("Cannot signal end of connection: {}", e))
+                            .and_then(move |()| match r {
+                                Ok(_) => {
+                                    info!("Sender stream closed...");
+                                    future::ok(())
+                                }
+                                Err(e) => {
+                                    error!("Error occurred: {:?}", e);
+                                    future::err(())
+                                }
+                            })
                     }),
             ) as Box<Future<Item = (), Error = ()> + Send>;
 
-            let resp_queue: Arc<Mutex<VecDeque<oneshot::Sender<resp::RespValue>>>> =
-                Arc::new(Mutex::new(VecDeque::new()));
-            let receiver_queue = resp_queue.clone();
+            let pc_receiver = paired_connection.clone();
             let receiver = Box::new(
                 receiver
-                    .for_each(move |msg| {
-                        let mut queue = receiver_queue.lock().expect("Lock is tainted");
-                        let dest = queue.pop_front().expect("Queue is empty");
-                        let _ = dest.send(msg); // Ignore error as receiving end could have been legitimately closed
-                        if queue.is_empty() {
-                            let running = running.lock().expect("Lock is tainted");
-                            if *running {
-                                Ok(())
-                            } else {
-                                Err(error::Error::EndOfStream)
-                            }
-                        } else {
-                            Ok(())
-                        }
+                    .fold(pc_receiver, move |pc_receiver, msg| {
+                        pc_receiver.receive(msg).map(|()| pc_receiver)
                     })
                     .then(|result| match result {
-                        Ok(()) => future::ok(()),
+                        Ok(_) => future::ok(()),
                         Err(error::Error::EndOfStream) => future::ok(()),
                         Err(e) => future::err(e),
                     })
@@ -89,10 +86,7 @@ where
                 .execute(sender)
                 .and_then(|_| executor.execute(receiver))
             {
-                Ok(()) => future::ok(PairedConnection {
-                    out_tx: out_tx,
-                    resp_queue: resp_queue,
-                }),
+                Ok(()) => future::ok(paired_connection),
                 Err(e) => future::err(error::internal(format!(
                     "Cannot start background tasks: {:?}",
                     e
@@ -103,10 +97,59 @@ where
     Box::new(paired_con)
 }
 
-pub struct PairedConnection {
+#[derive(Debug)]
+struct PairedConnectionState {
+    running: bool,
     out_tx: mpsc::UnboundedSender<resp::RespValue>,
-    resp_queue: Arc<Mutex<VecDeque<oneshot::Sender<resp::RespValue>>>>,
+    resp_queue: VecDeque<oneshot::Sender<resp::RespValue>>,
 }
+
+#[derive(Clone)]
+pub struct PairedConnection {
+    queue: ActorSender<PairedConnectionAction, (), error::Error>,
+}
+
+#[derive(Debug)]
+enum PairedConnectionAction {
+    Stop,
+    Send(resp::RespValue, oneshot::Sender<resp::RespValue>),
+    Receive(resp::RespValue),
+}
+
+impl Action<PairedConnectionState, (), error::Error> for PairedConnectionAction {
+    fn act(self, state: &mut PairedConnectionState) -> Result<(), error::Error> {
+        println!("Acting on {:?} state: {:?}", self, state);
+        match self {
+            PairedConnectionAction::Stop => {
+                state.running = false;
+                debug!(
+                    "Stopping the running flat, {} messages in-flight",
+                    state.resp_queue.len()
+                );
+            }
+            PairedConnectionAction::Send(msg, tx) => {
+                state.resp_queue.push_back(tx);
+                state.out_tx.unbounded_send(msg)?;
+            }
+            PairedConnectionAction::Receive(msg) => {
+                let receiver = state
+                    .resp_queue
+                    .pop_front()
+                    .expect("Resp Queue empty, but replies still coming");
+                let _ = receiver.send(msg);
+                if !state.running && state.resp_queue.is_empty() {
+                    return Err(error::Error::EndOfStream);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+// pub struct PairedConnection {
+//     out_tx: mpsc::UnboundedSender<resp::RespValue>,
+//     resp_queue: Arc<Mutex<VecDeque<oneshot::Sender<resp::RespValue>>>>,
+// }
 
 pub type SendBox<T> = Box<Future<Item = T, Error = error::Error> + Send>;
 
@@ -148,17 +191,23 @@ impl PairedConnection {
         }
 
         let (tx, rx) = oneshot::channel();
-        let mut queue = self.resp_queue.lock().expect("Tainted queue");
+        let fut = self.queue
+            .invoke(PairedConnectionAction::Send(msg, tx))
+            .and_then(move |()| {
+                rx.then(|v| match v {
+                    Ok(v) => future::result(T::from_resp(v)),
+                    Err(e) => future::err(e.into()),
+                })
+            });
+        Box::new(fut)
+    }
 
-        queue.push_back(tx);
+    fn stop(&self) -> Box<Future<Item = (), Error = error::Error> + Send> {
+        self.queue.invoke(PairedConnectionAction::Stop)
+    }
 
-        self.out_tx.unbounded_send(msg).expect("Failed to send");
-
-        let future = rx.then(|v| match v {
-            Ok(v) => future::result(T::from_resp(v)),
-            Err(e) => future::err(e.into()),
-        });
-        Box::new(future)
+    fn receive(&self, msg: resp::RespValue) -> Box<Future<Item = (), Error = error::Error> + Send> {
+        self.queue.invoke(PairedConnectionAction::Receive(msg))
     }
 }
 
